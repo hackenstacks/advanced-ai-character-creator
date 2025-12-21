@@ -1,8 +1,6 @@
-
-// The correct type for a stream response is an async iterable of `GenerateContentResponse`.
 import { GoogleGenAI, GenerateContentResponse, Modality, FunctionDeclaration, Type } from "@google/genai";
-import { Character, Message, ApiConfig } from "../types";
-import { logger } from "./loggingService";
+import { Character, Message, ApiConfig } from "../types.ts";
+import { logger } from "./loggingService.ts";
 
 // --- Rate Limiting ---
 const lastRequestTimestamps = new Map<string, number>();
@@ -35,7 +33,6 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
     const reader = new FileReader();
     reader.onloadend = () => {
         const result = reader.result as string;
-        // Remove data URL prefix if present (e.g. "data:image/png;base64,")
         const base64 = result.split(',')[1];
         resolve(base64);
     };
@@ -61,11 +58,9 @@ const imageUrlToBase64 = async (url: string): Promise<string> => {
         const base64 = await blobToBase64(blob);
         return `data:${blob.type};base64,${base64}`;
     } catch (e) {
-        return url; // Return URL if conversion fails
+        return url; 
     }
 };
-
-// --- OpenAI Compatible Service ---
 
 const isNetworkError = (error: any): boolean => {
     if (!error) return false;
@@ -79,9 +74,6 @@ const isNetworkError = (error: any): boolean => {
     );
 };
 
-/**
- * A generic wrapper for async functions that includes a retry mechanism with exponential backoff.
- */
 const withRetry = async <T,>(
     apiCall: () => Promise<T>,
     maxRetries = 3,
@@ -158,12 +150,9 @@ const streamOpenAIChatResponse = async (
             if (m.role === 'model') {
                 role = 'assistant';
             } else if (m.role === 'narrator') {
-                // Map narrator to user with prefix to avoid validation errors on strict endpoints
-                // that don't support custom roles or misplaced system messages.
                 role = 'user'; 
                 content = `[Narrator]: ${m.content}`;
             }
-            // Ensure no invalid roles are passed
             return { role, content };
         })
     ];
@@ -214,7 +203,6 @@ const streamOpenAIChatResponse = async (
                         const content = json.choices?.[0]?.delta?.content || json.choices?.[0]?.text;
                         if (content) onChunk(content);
                     } catch (e) {
-                        // Ignore parse errors for partial chunks
                     }
                 }
             }
@@ -231,7 +219,6 @@ const streamPollinationsChatResponse = async (
     history: Message[],
     onChunk: (chunk: string) => void
 ): Promise<void> => {
-    // Use POST with messages array to avoid URL length limits and structure data correctly
     const messages = [
         { role: 'system', content: systemInstruction },
         ...history.map(m => ({
@@ -251,7 +238,6 @@ const streamPollinationsChatResponse = async (
             body: JSON.stringify({
                 messages: messages,
                 model: model, 
-                // Removed seed and jsonMode as they can cause 500s on some Pollinations backends
             }),
         });
 
@@ -260,30 +246,23 @@ const streamPollinationsChatResponse = async (
             throw new Error(`Pollinations API Error (${response.status}): ${errText}`);
         }
         
-        // Pollinations might return raw text or JSON depending on the mood of the day/model
         const raw = await response.text();
         
         try {
-            // Attempt to parse as JSON to see if it follows OpenAI format
             if (raw.trim().startsWith('{')) {
                 const json = JSON.parse(raw);
-                // Check for OpenAI format
                 if (json.choices && json.choices[0] && json.choices[0].message) {
                     onChunk(json.choices[0].message.content);
                     return;
                 }
-                // Check for direct response format if any
                 if (json.response) {
                     onChunk(json.response);
                     return;
                 }
             }
         } catch (e) {
-            // Not JSON, continue to return raw text
         }
-
         onChunk(raw);
-
     } catch (error) {
         logger.error("Error generating Pollinations response:", error);
         onChunk(`[Error: ${error instanceof Error ? error.message : String(error)}]`);
@@ -302,8 +281,6 @@ const buildImagePrompt = (prompt: string, settings: { [key: string]: any }): str
     const negativePrompt = settings.negativePrompt ? `. Negative prompt: ${settings.negativePrompt}` : '';
     return `${stylePrompt}${prompt}${negativePrompt}`;
 };
-
-// --- Image Generators ---
 
 const generateGeminiImage = async (prompt: string, settings: { [key: string]: any }): Promise<string> => {
     const ai = getAiClient(settings?.apiKey);
@@ -344,7 +321,6 @@ const generateGeminiImage = async (prompt: string, settings: { [key: string]: an
         }
         
         throw new Error("No image data found in response.");
-
     } catch (error) {
         logger.error("Error generating image with gemini-2.5-flash-image:", error);
         throw error;
@@ -447,11 +423,9 @@ const generateHuggingFaceImage = async (prompt: string, settings: { [key: string
         const base64 = await blobToBase64(blob);
         return `data:${blob.type};base64,${base64}`;
     } catch (error: any) {
-        // Fallback for CORS issues typical in local browser environments
         const msg = String(error.message || error).toLowerCase();
         if (msg.includes('network error') || msg.includes('failed to fetch') || msg.includes('cors')) {
             logger.warn("Hugging Face direct call failed (likely CORS). Falling back to Pollinations.ai");
-            // Automatically try Pollinations with Flux (similar model)
             return await generatePollinationsImage(prompt, { ...settings, model: 'flux' });
         }
         throw error;
@@ -552,9 +526,6 @@ const generateAIHordeImage = async (prompt: string, settings: { [key: string]: a
     throw new Error("AI Horde generation timed out.");
 };
 
-
-// --- Gemini Service ---
-
 const buildSystemInstruction = (character: Character, allParticipants: Character[] = []): string => {
     let instruction = `You are an AI character named ${character.name}.\n\n`;
 
@@ -587,7 +558,6 @@ const buildSystemInstruction = (character: Character, allParticipants: Character
         instruction += character.lore.filter(fact => fact.trim() !== '').map(fact => `- ${fact}`).join('\n') + '\n\n';
     }
 
-    // Tools instruction
     instruction += "== TOOLS ==\n";
     if (character.searchEnabled) {
         instruction += "You have access to Google Search to find real-time information. Use it when the user asks about current events or factual topics.\n";
@@ -607,30 +577,24 @@ const normalizeGeminiHistory = (history: Message[]) => {
     const mapped = relevantMessages.map(msg => {
         const role = msg.role === 'model' ? 'model' : 'user';
         let parts: any[] = [];
-
-        // Handle text content
         const textContent = msg.role === 'narrator' ? `[NARRATOR]: ${msg.content}` : msg.content;
         if (textContent.trim()) {
             parts.push({ text: textContent });
         }
-
-        // Handle multimodal attachments (Images, Audio, Video)
         if (msg.attachment && msg.attachment.url && msg.attachment.status === 'done') {
-            const base64Data = msg.attachment.url.split(',')[1]; // Remove data:mime;base64,
+            const base64Data = msg.attachment.url.split(',')[1]; 
             if (base64Data) {
                 parts.push({
                     inlineData: {
-                        mimeType: msg.attachment.mimeType || 'image/png', // Default or actual mime
+                        mimeType: msg.attachment.mimeType || 'image/png',
                         data: base64Data
                     }
                 });
             }
         }
-
         return { role, parts };
     });
 
-    // Merge consecutive messages of the same role to satisfy API requirements
     const merged = [];
     if (mapped.length > 0) {
         merged.push(mapped[0]);
@@ -638,20 +602,15 @@ const normalizeGeminiHistory = (history: Message[]) => {
             const prev = merged[merged.length - 1];
             const curr = mapped[i];
             if (prev.role === curr.role) {
-                // Combine parts
                 prev.parts = [...prev.parts, ...curr.parts];
             } else {
                 merged.push(curr);
             }
         }
     }
-    
     return merged;
 };
 
-// --- Tool Definitions ---
-
-// Use Type.OBJECT/STRING instead of SchemaType
 const terminalTool: FunctionDeclaration = {
     name: "execute_terminal_command",
     description: "Execute a shell command in a restricted Linux terminal. Use this to read files, write files, create directories, or list files. The user must approve every command.",
@@ -671,16 +630,24 @@ const googleSearchTool = { googleSearch: {} };
 
 const getToolsForCharacter = (character: Character) => {
     const tools: any[] = [];
-    
     if (character.searchEnabled) {
         tools.push(googleSearchTool);
     }
-    
     if (character.terminalEnabled) {
         tools.push({ functionDeclarations: [terminalTool] });
     }
-    
     return tools.length > 0 ? tools : undefined;
+};
+
+export const generateAvatarPrompt = async (character: Character, lastResponse: string): Promise<string> => {
+    const baseDesc = character.physicalAppearance || character.description || "A person";
+    const prompt = `Based on the character description: "${baseDesc}", and their most recent response: "${lastResponse}", create a concise image generation prompt that captures their current facial expression, mood, and outfit. Format: "[Character Look], [Expression], [Outfit/Action], [Style]". Keep it under 40 words.`;
+    try {
+        return await generateContent(prompt);
+    } catch (e) {
+        logger.warn("Failed to generate avatar prompt", e);
+        return baseDesc;
+    }
 };
 
 const streamGeminiChatResponse = async (
@@ -721,13 +688,10 @@ const streamGeminiChatResponse = async (
         })) as AsyncIterable<GenerateContentResponse>;
 
         for await (const chunk of responseStream) {
-            // Handle Tool Calls
             if (chunk.functionCalls && chunk.functionCalls.length > 0) {
-                // Pass the whole function call object to be handled by the UI
                 onChunk({ type: 'tool_call', data: chunk.functionCalls[0] });
-                return; // Stop processing text chunks if we got a tool call
+                return; 
             }
-            
             if (chunk.text) {
                 onChunk(chunk.text);
             }
@@ -738,8 +702,6 @@ const streamGeminiChatResponse = async (
         onChunk(`Sorry, an error occurred with the Gemini API: ${errorMessage}`);
     }
 };
-
-// --- TTS Service ---
 
 export const generateSpeech = async (text: string, voiceName: string = 'Puck', apiKey?: string): Promise<Uint8Array> => {
     try {
@@ -765,15 +727,11 @@ export const generateSpeech = async (text: string, voiceName: string = 'Puck', a
         }
 
         return base64ToUint8Array(base64Audio);
-
     } catch (error) {
         logger.error("Error generating speech:", error);
         throw error;
     }
 };
-
-
-// --- Orchestrator Functions ---
 
 export const streamChatResponse = async (
     character: Character,
@@ -783,8 +741,6 @@ export const streamChatResponse = async (
     systemInstructionOverride?: string
 ): Promise<void> => {
     const config = character.apiConfig || { service: 'default' };
-    
-    // Rate Limiting
     const rateLimit = config.rateLimit;
     if (rateLimit && rateLimit > 0) {
         const characterId = character.id;
@@ -801,23 +757,20 @@ export const streamChatResponse = async (
     }
 
     let systemInstruction = buildSystemInstruction(character, allParticipants);
-
     if (systemInstructionOverride) {
         systemInstruction += `\n\n[ADDITIONAL INSTRUCTIONS FOR THIS RESPONSE ONLY]:\n${systemInstructionOverride}`;
         logger.log("Applying system instruction override for next response.");
     }
 
     if (config.service === 'pollinations') {
-        logger.log(`Using Pollinations Text API for character: ${character.name}`);
         await streamPollinationsChatResponse(config, systemInstruction, history, onChunk);
     } else if (['openai', 'groq', 'mistral', 'openrouter', 'kobold'].includes(config.service)) {
-        logger.log(`Using OpenAI-compatible API (${config.service}) for character: ${character.name}`);
         if (!config.apiEndpoint) {
             onChunk(`Error: API endpoint is not configured for service '${config.service}'. Please check character settings.`);
             return;
         }
         await streamOpenAIChatResponse(config, systemInstruction, history, onChunk);
-    } else { // Defaulting to Gemini
+    } else { 
         await streamGeminiChatResponse(character, systemInstruction, history, onChunk);
     }
 };
@@ -825,55 +778,40 @@ export const streamChatResponse = async (
 export const generateImageFromPrompt = async (prompt: string, settings?: { [key: string]: any }): Promise<string> => {
     try {
         const safeSettings = settings || {};
-        // Rate Limiting for image generation
         const rateLimit = safeSettings.rateLimit;
         if (rateLimit && rateLimit > 0) {
             const pluginId = 'default-image-generator';
             const lastRequestTime = lastRequestTimestamps.get(pluginId) || 0;
             const now = Date.now();
             const elapsed = now - lastRequestTime;
-
             if (elapsed < rateLimit) {
                 const delay = rateLimit - elapsed;
-                logger.log(`Rate limiting image generation. Delaying for ${delay}ms.`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
             lastRequestTimestamps.set(pluginId, Date.now());
         }
 
         const service = safeSettings.service || 'default';
-        
         switch (service) {
             case 'openai':
-            case 'imagerouter':
-                if (!safeSettings.apiEndpoint) {
-                    throw new Error(`${service} requires a configured API endpoint.`);
-                }
                 return await generateOpenAIImage(prompt, safeSettings);
-            
             case 'pollinations':
                 return await generatePollinationsImage(prompt, safeSettings);
-            
             case 'huggingface':
                 return await generateHuggingFaceImage(prompt, safeSettings);
-            
             case 'stability':
                 return await generateStabilityImage(prompt, safeSettings);
-                
             case 'aihorde':
                 return await generateAIHordeImage(prompt, safeSettings);
-
             case 'gemini':
             case 'default':
             default:
-                // Default fallback to Gemini
                 return await generateGeminiImage(prompt, safeSettings);
         }
-
     } catch (error) {
         logger.error("Error in generateImageFromPrompt:", error);
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
-        throw new Error(`Image generation failed. Please check the plugin settings (API key, endpoint) and logs. Details: ${errorMessage}`);
+        throw new Error(`Image generation failed. Details: ${errorMessage}`);
     }
 };
 

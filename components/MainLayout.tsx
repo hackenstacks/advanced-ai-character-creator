@@ -1,38 +1,37 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Character, ChatSession, AppData, Plugin, GeminiApiRequest, Message, CryptoKeys, RagSource, ConfirmationRequest, UISettings, Lorebook, FileSystemState } from '../types';
-import { loadData, saveData } from '../services/secureStorage';
-import * as ragService from '../services/ragService';
-import * as fileSystemService from '../services/fileSystemService';
-import { CharacterList } from './CharacterList';
-import { ChatList } from './ChatList';
-import { CharacterForm } from './CharacterForm';
-import { ChatInterface } from './ChatInterface';
-import { PluginManager } from './PluginManager';
-import { LogViewer } from './LogViewer';
-import { HelpModal } from './HelpModal';
-import { LorebookManager } from './LorebookManager';
-import { DocumentLibrary } from './DocumentLibrary';
-import { ChatSelectionModal } from './ChatSelectionModal';
-import { ConfirmationModal } from './ConfirmationModal';
-import { ThemeSwitcher } from './ThemeSwitcher';
-import { AppearanceModal } from './AppearanceModal';
-import { PluginSandbox } from '../services/pluginSandbox';
-import * as geminiService from '../services/geminiService';
-import * as compatibilityService from '../services/compatibilityService';
-import * as cryptoService from '../services/cryptoService';
-import { logger } from '../services/loggingService';
-import { DownloadIcon } from './icons/DownloadIcon';
-import { UploadIcon } from './icons/UploadIcon';
-import { CodeIcon } from './icons/CodeIcon';
-import { TerminalIcon } from './icons/TerminalIcon';
-import { HelpIcon } from './icons/HelpIcon';
-import { PlusIcon } from './icons/PlusIcon';
-import { ChatBubbleIcon } from './icons/ChatBubbleIcon';
-import { UsersIcon } from './icons/UsersIcon';
-import { PaletteIcon } from './icons/PaletteIcon';
-import { GlobeIcon } from './icons/GlobeIcon';
-import { FolderIcon } from './icons/FolderIcon';
+import { Character, ChatSession, AppData, Plugin, GeminiApiRequest, Message, CryptoKeys, RagSource, ConfirmationRequest, UISettings, Lorebook, FileSystemState } from '../types.ts';
+import { loadData, saveData } from '../services/secureStorage.ts';
+import * as ragService from '../services/ragService.ts';
+import * as fileSystemService from '../services/fileSystemService.ts';
+import { CharacterList } from './CharacterList.tsx';
+import { ChatList } from './ChatList.tsx';
+import { CharacterForm } from './CharacterForm.tsx';
+import { ChatInterface } from './ChatInterface.tsx';
+import { PluginManager } from './PluginManager.tsx';
+import { LogViewer } from './LogViewer.tsx';
+import { HelpModal } from './HelpModal.tsx';
+import { LorebookManager } from './LorebookManager.tsx';
+import { DocumentLibrary } from './DocumentLibrary.tsx';
+import { ChatSelectionModal } from './ChatSelectionModal.tsx';
+import { ConfirmationModal } from './ConfirmationModal.tsx';
+import { ThemeSwitcher } from './ThemeSwitcher.tsx';
+import { AppearanceModal } from './AppearanceModal.tsx';
+import { PluginSandbox } from '../services/pluginSandbox.ts';
+import * as geminiService from '../services/geminiService.ts';
+import * as compatibilityService from '../services/compatibilityService.ts';
+import * as cryptoService from '../services/cryptoService.ts';
+import { logger } from '../services/loggingService.ts';
+import { DownloadIcon } from './icons/DownloadIcon.tsx';
+import { UploadIcon } from './icons/UploadIcon.tsx';
+import { CodeIcon } from './icons/CodeIcon.tsx';
+import { TerminalIcon } from './icons/TerminalIcon.tsx';
+import { HelpIcon } from './icons/HelpIcon.tsx';
+import { PlusIcon } from './icons/PlusIcon.tsx';
+import { ChatBubbleIcon } from './icons/ChatBubbleIcon.tsx';
+import { UsersIcon } from './icons/UsersIcon.tsx';
+import { PaletteIcon } from './icons/PaletteIcon.tsx';
+import { GlobeIcon } from './icons/GlobeIcon.tsx';
+import { FolderIcon } from './icons/FolderIcon.tsx';
 
 const defaultImagePlugin: Plugin = {
     id: 'default-image-generator',
@@ -40,7 +39,6 @@ const defaultImagePlugin: Plugin = {
     description: 'Generates images from prompts. Supports Pollinations (Free), AI Horde (Free), Hugging Face, Stability.ai, Gemini, and more.',
     enabled: true,
     code: `
-// Default Image Generation Plugin
 nexus.hooks.register('generateImage', async (payload) => {
   try {
     let prompt;
@@ -61,7 +59,6 @@ nexus.hooks.register('generateImage', async (payload) => {
     return { error: String(error) };
   }
 });
-nexus.log('Image Generation plugin loaded.');
 `,
     settings: {
         service: 'pollinations',
@@ -76,9 +73,7 @@ const defaultTtsPlugin: Plugin = {
     name: 'Text-to-Speech (TTS)',
     description: 'Enables text-to-speech functionality in the chat interface.',
     enabled: true,
-    code: `
-nexus.log('TTS Plugin loaded (Core Feature).');
-`,
+    code: `nexus.log('TTS Plugin loaded.');`,
     settings: {}
 };
 
@@ -88,19 +83,15 @@ type ActiveView = 'chat' | 'character-form' | 'plugins' | 'lorebooks' | 'library
 export const MainLayout: React.FC = () => {
     const [appData, setAppData] = useState<AppData>({ characters: [], chatSessions: [], plugins: [], lorebooks: [], knowledgeBase: [] });
     const [fileSystemState, setFileSystemState] = useState<FileSystemState>(fileSystemService.createDefaultFileSystem());
-    
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
-    
     const [activeView, setActiveView] = useState<ActiveView>('chat');
     const [activePanel, setActivePanel] = useState<ActivePanel>('chats');
-
     const [isLogViewerVisible, setIsLogViewerVisible] = useState(false);
     const [isHelpVisible, setIsHelpVisible] = useState(false);
     const [isChatModalVisible, setIsChatModalVisible] = useState(false);
     const [isAppearanceModalVisible, setIsAppearanceModalVisible] = useState(false);
     const [confirmationRequest, setConfirmationRequest] = useState<ConfirmationRequest | null>(null);
-
     const [showArchivedChats, setShowArchivedChats] = useState(false);
     const [showArchivedCharacters, setShowArchivedCharacters] = useState(false);
 
@@ -139,11 +130,9 @@ export const MainLayout: React.FC = () => {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            logger.log("Loading initial application data...");
             try {
                 const data = await loadData();
                 let dataNeedsSave = false;
-                
                 if (!data.userKeys) {
                     const keyPair = await cryptoService.generateSigningKeyPair();
                     data.userKeys = {
@@ -152,27 +141,13 @@ export const MainLayout: React.FC = () => {
                     };
                     dataNeedsSave = true;
                 }
-                
                 if (!data.knowledgeBase) data.knowledgeBase = [];
                 if (!data.lorebooks) data.lorebooks = [];
-                
                 if (!data.fileSystem) {
                     data.fileSystem = fileSystemService.createDefaultFileSystem();
                     dataNeedsSave = true;
                 }
                 setFileSystemState(data.fileSystem);
-                
-                const dataAsAny = data as any;
-                if (dataAsAny.uiSettings && Object.keys(dataAsAny.uiSettings).length > 0) {
-                    const globalSettings = dataAsAny.uiSettings;
-                    delete dataAsAny.uiSettings;
-                    data.chatSessions = data.chatSessions.map(cs => {
-                        if (!cs.uiSettings) return { ...cs, uiSettings: globalSettings };
-                        return cs;
-                    });
-                    dataNeedsSave = true;
-                }
-
                 const defaultPlugins = [defaultImagePlugin, defaultTtsPlugin];
                 if (!data.plugins) data.plugins = [];
                 defaultPlugins.forEach(defaultPlugin => {
@@ -180,41 +155,20 @@ export const MainLayout: React.FC = () => {
                     if (!hasPlugin) {
                         data.plugins!.push(defaultPlugin);
                         dataNeedsSave = true;
-                    } else {
-                        data.plugins = data.plugins!.map(p => {
-                            if (p.id === defaultPlugin.id && !p.settings) {
-                                dataNeedsSave = true;
-                                return { ...p, settings: defaultPlugin.settings };
-                            }
-                            return p;
-                        });
                     }
                 });
-
-                if (dataNeedsSave) {
-                    await persistData(data);
-                }
-                
+                if (dataNeedsSave) await persistData(data);
                 setAppData(data);
                 if (data.chatSessions.length > 0) {
                     setSelectedChatId(data.chatSessions.find(cs => !cs.isArchived)?.id || data.chatSessions[0].id);
                     setActiveView('chat');
-                } else {
-                    if (data.characters.length > 0) {
-                        setActivePanel('characters');
-                    }
                 }
             } catch (error) {
                 logger.error("Failed to load initial data.", error);
-                alert("Critical error loading data. Please check logs.");
             }
         };
         loadInitialData();
-
-        return () => {
-            sandboxes.forEach(sandbox => sandbox.terminate());
-            sandboxes.clear();
-        };
+        return () => sandboxes.forEach(s => s.terminate());
     }, [persistData]);
 
     useEffect(() => {
@@ -233,18 +187,11 @@ export const MainLayout: React.FC = () => {
                 sandboxes.delete(plugin.id);
             }
         });
-        sandboxes.forEach((_, id) => {
-            if (!appData.plugins?.some(p => p.id === id)) {
-                sandboxes.get(id)?.terminate();
-                sandboxes.delete(id);
-            }
-        });
-    }, [appData.plugins, sandboxes, handlePluginApiRequest]);
+    }, [appData.plugins, handlePluginApiRequest]);
 
     const handleSaveCharacter = async (character: Character) => {
         const isNew = !appData.characters.some(c => c.id === character.id);
         let updatedCharacter = { ...character };
-
         if (isNew || !updatedCharacter.keys) {
             const keyPair = await cryptoService.generateSigningKeyPair();
             updatedCharacter.keys = {
@@ -252,7 +199,6 @@ export const MainLayout: React.FC = () => {
                 privateKey: await cryptoService.exportKey(keyPair.privateKey),
             };
         }
-        
         if (appData.userKeys) {
             const userPrivateKey = await cryptoService.importKey(appData.userKeys.privateKey, 'sign');
             const dataToSign: Partial<Character> = { ...updatedCharacter };
@@ -261,98 +207,27 @@ export const MainLayout: React.FC = () => {
             updatedCharacter.signature = await cryptoService.sign(canonicalString, userPrivateKey);
             updatedCharacter.userPublicKeyJwk = appData.userKeys.publicKey;
         }
-
-        if (updatedCharacter.ragSources && updatedCharacter.ragSources.length > 0) {
-            const newDocs = [...(appData.knowledgeBase || [])];
-            const newDocIds = updatedCharacter.knowledgeSourceIds || [];
-            updatedCharacter.ragSources.forEach(doc => {
-                if (!newDocs.some(d => d.id === doc.id)) newDocs.push(doc);
-                if (!newDocIds.includes(doc.id)) newDocIds.push(doc.id);
-            });
-            updatedCharacter.ragSources = [];
-            updatedCharacter.knowledgeSourceIds = newDocIds;
-            setAppData(prev => ({...prev, knowledgeBase: newDocs}));
-        }
-
         const updatedCharacters = isNew 
             ? [...appData.characters, updatedCharacter] 
             : appData.characters.map(c => c.id === updatedCharacter.id ? updatedCharacter : c);
-        
-        const updatedData = { ...appData, characters: updatedCharacters, knowledgeBase: appData.knowledgeBase };
+        const updatedData = { ...appData, characters: updatedCharacters };
         setAppData(updatedData);
         await persistData(updatedData);
-        
-        if (editingCharacter && editingCharacter.id === updatedCharacter.id) {
-            setEditingCharacter(updatedCharacter);
-        }
-        
         setActiveView('chat');
         if (isNew) setEditingCharacter(null);
     };
-    
+
     const handleCharacterUpdate = useCallback((character: Character) => {
-        setAppData(prevAppData => {
-            const updatedCharacters = prevAppData.characters.map(c => c.id === character.id ? character : c);
-            const updatedData = { ...prevAppData, characters: updatedCharacters };
+        setAppData(prev => {
+            const updatedCharacters = prev.characters.map(c => c.id === character.id ? character : c);
+            const updatedData = { ...prev, characters: updatedCharacters };
             persistData(updatedData);
             return updatedData;
         });
     }, [persistData]);
 
-    const handleArchiveCharacter = (characterId: string) => {
-        const characterName = appData.characters.find(c => c.id === characterId)?.name || 'Unknown';
-        setConfirmationRequest({
-            message: <span>Are you sure you want to archive <strong>{characterName}</strong>?</span>,
-            onConfirm: () => {
-                const updatedCharacters = appData.characters.map(c => c.id === characterId ? { ...c, isArchived: true } : c);
-                const updatedData = { ...appData, characters: updatedCharacters };
-                setAppData(updatedData);
-                persistData(updatedData);
-                setConfirmationRequest(null);
-            },
-            onCancel: () => setConfirmationRequest(null)
-        });
-    };
-
-    const handleRestoreCharacter = (characterId: string) => {
-        const updatedCharacters = appData.characters.map(c => c.id === characterId ? { ...c, isArchived: false } : c);
-        const updatedData = { ...appData, characters: updatedCharacters };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-
-    const handlePermanentlyDeleteCharacter = (characterId: string) => {
-        setConfirmationRequest({
-            message: "Permanently delete this character?",
-            onConfirm: () => {
-                const updatedCharacters = appData.characters.filter(c => c.id !== characterId);
-                const updatedSessions = appData.chatSessions.filter(s => !s.characterIds.includes(characterId));
-                const updatedData = { ...appData, characters: updatedCharacters, chatSessions: updatedSessions };
-                setAppData(updatedData);
-                persistData(updatedData);
-                if (selectedChatId && !updatedSessions.some(s => s.id === selectedChatId)) {
-                    setSelectedChatId(updatedSessions.length > 0 ? updatedSessions[0].id : null);
-                }
-                setConfirmationRequest(null);
-            },
-            onCancel: () => setConfirmationRequest(null)
-        });
-    };
-
     const handleCreateChat = (name: string, characterIds: string[], lorebookIds: string[]) => {
-        const messages: Message[] = [];
-        if (characterIds.length === 1) {
-            const character = appData.characters.find(c => c.id === characterIds[0]);
-            if (character && character.firstMessage) {
-                messages.push({
-                    role: 'model',
-                    content: character.firstMessage.replace(/{{user}}/g, 'You'),
-                    timestamp: new Date().toISOString(),
-                    characterId: character.id
-                });
-            }
-        }
-        const newSession: ChatSession = { id: crypto.randomUUID(), name, characterIds, messages, uiSettings: {}, lorebookIds };
+        const newSession: ChatSession = { id: crypto.randomUUID(), name, characterIds, messages: [], uiSettings: {}, lorebookIds };
         const updatedSessions = [...appData.chatSessions, newSession];
         const updatedData = { ...appData, chatSessions: updatedSessions };
         setAppData(updatedData);
@@ -360,244 +235,20 @@ export const MainLayout: React.FC = () => {
         setSelectedChatId(newSession.id);
         setActiveView('chat');
         setIsChatModalVisible(false);
-        setActivePanel('none');
-    };
-
-    const handleArchiveChat = (sessionId: string) => {
-        setConfirmationRequest({
-            message: "Archive this chat?",
-            onConfirm: () => {
-                const updatedSessions = appData.chatSessions.map(s => s.id === sessionId ? { ...s, isArchived: true } : s);
-                const updatedData = { ...appData, chatSessions: updatedSessions };
-                setAppData(updatedData);
-                persistData(updatedData);
-                if (selectedChatId === sessionId) setSelectedChatId(updatedSessions.find(s => !s.isArchived)?.id || null);
-                setConfirmationRequest(null);
-            },
-            onCancel: () => setConfirmationRequest(null)
-        });
-    };
-
-    const handleRestoreChat = (sessionId: string) => {
-        const updatedSessions = appData.chatSessions.map(s => s.id === sessionId ? { ...s, isArchived: false } : s);
-        const updatedData = { ...appData, chatSessions: updatedSessions };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-
-    const handlePermanentlyDeleteChat = (sessionId: string) => {
-        setConfirmationRequest({
-            message: "Permanently delete this chat?",
-            onConfirm: () => {
-                const updatedSessions = appData.chatSessions.filter(s => s.id !== sessionId);
-                const updatedData = { ...appData, chatSessions: updatedSessions };
-                setAppData(updatedData);
-                persistData(updatedData);
-                if (selectedChatId === sessionId) setSelectedChatId(updatedSessions.length > 0 ? updatedSessions[0].id : null);
-                setConfirmationRequest(null);
-            },
-            onCancel: () => setConfirmationRequest(null)
-        });
-    };
-    
-    const handleEditCharacter = (character: Character) => {
-        setEditingCharacter(character);
-        setActiveView('character-form');
-        setActivePanel('none');
-    };
-    
-    const handleAddNewCharacter = () => {
-        setEditingCharacter(null);
-        setActiveView('character-form');
-        setActivePanel('none');
-    };
-
-    const handleSelectChat = (sessionId: string) => {
-        setSelectedChatId(sessionId);
-        setActiveView('chat');
-        setEditingCharacter(null);
-        setActivePanel('none');
     };
 
     const handleSessionUpdate = useCallback((session: ChatSession) => {
-        setAppData(prevAppData => {
-            const sessionExists = prevAppData.chatSessions.some(s => s.id === session.id);
-            const updatedSessions = sessionExists
-                ? prevAppData.chatSessions.map(s => s.id === session.id ? session : s)
-                : [...prevAppData.chatSessions, session];
-    
-            const updatedData = { ...prevAppData, chatSessions: updatedSessions };
+        setAppData(prev => {
+            const updatedSessions = prev.chatSessions.map(s => s.id === session.id ? session : s);
+            const updatedData = { ...prev, chatSessions: updatedSessions };
             persistData(updatedData);
             return updatedData;
         });
     }, [persistData]);
 
-    const handleUpdateDocuments = (docs: RagSource[]) => {
-        const updatedData = { ...appData, knowledgeBase: docs };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-
-    const triggerDownload = (filename: string, data: object) => {
-        const jsonString = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    };
-
-    const handleSaveBackup = useCallback(async () => {
-        try {
-            const dataToExport = { spec: 'ai_nexus_backup', version: '1.0', data: appData };
-            const timestamp = new Date().toISOString().split('T')[0];
-            triggerDownload(`ai-nexus-backup-${timestamp}.json`, dataToExport);
-        } catch (error) {
-            logger.error("Failed to save backup.", error);
-        }
-    }, [appData]);
-
-    const handleExportCharacter = async (characterId: string) => {
-        const character = appData.characters.find(c => c.id === characterId);
-        if (character) {
-            try {
-                const card = await compatibilityService.nexusToV2(character);
-                triggerDownload(`${character.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`, card);
-            } catch (error) {
-                logger.error("Failed to export character", error);
-            }
-        }
-    };
-
-    const handleExportChat = (sessionId: string) => {
-        const session = appData.chatSessions.find(s => s.id === sessionId);
-        if (session) triggerDownload(`${session.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_chat.json`, session);
-    };
-    
-    const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const data = JSON.parse(e.target?.result as string);
-                const isValidAppData = (d: any): d is AppData => typeof d === 'object' && d !== null && Array.isArray(d.characters) && Array.isArray(d.chatSessions);
-                
-                if (data.spec === 'ai_nexus_backup' && isValidAppData(data.data)) {
-                    setConfirmationRequest({
-                        message: 'Restore full backup?',
-                        onConfirm: async () => { await persistData(data.data); window.location.reload(); },
-                        onCancel: () => setConfirmationRequest(null)
-                    });
-                    return;
-                }
-                const importedLorebook = compatibilityService.sillyTavernWorldInfoToNexus(data, file.name);
-                if (importedLorebook) {
-                    const newLorebook: Lorebook = { ...importedLorebook, id: crypto.randomUUID() };
-                    const updatedData = { ...appData, lorebooks: [...(appData.lorebooks || []), newLorebook] };
-                    setAppData(updatedData);
-                    await persistData(updatedData);
-                    return;
-                }
-                const importResult = compatibilityService.v2ToNexus(data);
-                if (importResult) {
-                    const { character, lorebook } = importResult;
-                    const existingCharacterIndex = appData.characters.findIndex(c => c.id === character.id);
-                    let updatedCharacters = [...appData.characters];
-                    if (existingCharacterIndex !== -1) {
-                        const existingChar = appData.characters[existingCharacterIndex];
-                        updatedCharacters[existingCharacterIndex] = { ...character, keys: existingChar.keys, userPublicKeyJwk: existingChar.userPublicKeyJwk, signature: existingChar.signature };
-                    } else {
-                        updatedCharacters.push(character);
-                    }
-                    let updatedLorebooks = appData.lorebooks || [];
-                    if (lorebook) updatedLorebooks = [...updatedLorebooks, lorebook];
-                    const updatedData = { ...appData, characters: updatedCharacters, lorebooks: updatedLorebooks };
-                    setAppData(updatedData);
-                    await persistData(updatedData);
-                    return;
-                }
-                if (isValidAppData(data)) {
-                    setConfirmationRequest({
-                        message: 'Restore legacy backup?',
-                        onConfirm: async () => { await persistData(data); window.location.reload(); },
-                        onCancel: () => setConfirmationRequest(null)
-                    });
-                    return;
-                }
-                if (data.id && Array.isArray(data.messages) && Array.isArray(data.characterIds)) {
-                    const exists = appData.chatSessions.some(s => s.id === data.id);
-                    if (exists && !window.confirm(`Chat "${data.name}" exists. Overwrite?`)) return;
-                    const updatedSessions = exists ? appData.chatSessions.map(s => s.id === data.id ? data as ChatSession : s) : [...appData.chatSessions, data as ChatSession];
-                    const updatedData = { ...appData, chatSessions: updatedSessions };
-                    setAppData(updatedData);
-                    await persistData(updatedData);
-                    return;
-                }
-                throw new Error("Unrecognized file format.");
-            } catch (error) {
-                logger.error("Import failed:", error);
-                alert(`Failed to import data.`);
-            } finally {
-                if (fileInputRef.current) fileInputRef.current.value = '';
-            }
-        };
-        reader.readAsText(file);
-    };
-
-    const handlePluginsUpdate = (updatedPlugins: Plugin[]) => {
-        const updatedData = { ...appData, plugins: updatedPlugins };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-    
-    const handleLorebooksUpdate = (updatedLorebooks: Lorebook[]) => {
-        const updatedData = { ...appData, lorebooks: updatedLorebooks };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-
-    const handleMemoryImport = (fromSessionId: string, toSessionId: string) => {
-        const fromSession = appData.chatSessions.find(s => s.id === fromSessionId);
-        const toSession = appData.chatSessions.find(s => s.id === toSessionId);
-        if (!fromSession || !toSession) return;
-        const toSessionParticipants = appData.characters.filter(c => toSession.characterIds.includes(c.id));
-        let charactersToUpdate: Character[] = [];
-        let memoriesImported = false;
-        toSessionParticipants.forEach(toChar => {
-            if (fromSession.characterIds.includes(toChar.id)) {
-                const fromChar = appData.characters.find(c => c.id === toChar.id);
-                if (fromChar && fromChar.memory) {
-                    const updatedMemory = `${toChar.memory || ''}\n\n[Imported memory from "${fromSession.name}"]:\n${fromChar.memory}`;
-                    charactersToUpdate.push({ ...toChar, memory: updatedMemory.trim() });
-                    memoriesImported = true;
-                }
-            }
-        });
-        if (!memoriesImported) { alert(`No shared memories found.`); return; }
-        const updatedCharacters = appData.characters.map(c => {
-            const updated = charactersToUpdate.find(uc => uc.id === c.id);
-            return updated || c;
-        });
-        const narratorMessage: Message = { role: 'narrator', content: `Memory from "${fromSession.name}" has been integrated.`, timestamp: new Date().toISOString() };
-        const updatedSession = {...toSession, messages: [...toSession.messages, narratorMessage] };
-        const updatedSessions = appData.chatSessions.map(s => s.id === toSessionId ? updatedSession : s);
-        const updatedData = { ...appData, characters: updatedCharacters, chatSessions: updatedSessions };
-        setAppData(updatedData);
-        persistData(updatedData);
-    };
-    
     const triggerPluginHook = useCallback(async <T, R,>(hookName: string, data: T): Promise<R> => {
         let processedData: any = data;
         const enabledPlugins = appData.plugins?.filter(p => p.enabled) || [];
-        if (hookName === 'generateImage') {
-            const imagePlugin = appData.plugins?.find(p => p.id === 'default-image-generator');
-            processedData = { ...processedData, settings: imagePlugin?.settings || {} };
-        }
         for (const plugin of enabledPlugins) {
             const sandbox = sandboxes.get(plugin.id);
             if (sandbox) {
@@ -609,22 +260,11 @@ export const MainLayout: React.FC = () => {
             }
         }
         return processedData as R;
-    }, [appData.plugins, sandboxes]);
-    
-    const handleGenerateImage = useCallback(async (prompt: string): Promise<string | null> => {
-        try {
-            const imagePlugin = appData.plugins?.find(p => p.id === 'default-image-generator');
-            if (!imagePlugin) throw new Error("Image plugin missing.");
-            return await geminiService.generateImageFromPrompt(prompt, imagePlugin.settings);
-        } catch (error) {
-            logger.error("Failed to generate image:", error);
-            return null;
-        }
     }, [appData.plugins]);
 
     const handleUiSettingsUpdate = useCallback(async (newSettings: UISettings) => {
         if (!selectedChatId) return;
-        const updatedSessions = appData.chatSessions.map(session => session.id === selectedChatId ? { ...session, uiSettings: newSettings } : session);
+        const updatedSessions = appData.chatSessions.map(s => s.id === selectedChatId ? { ...s, uiSettings: newSettings } : s);
         const updatedData = { ...appData, chatSessions: updatedSessions };
         setAppData(updatedData);
         await persistData(updatedData);
@@ -632,193 +272,40 @@ export const MainLayout: React.FC = () => {
 
     const selectedChat = appData.chatSessions.find(s => s.id === selectedChatId);
 
-    const renderMainContent = () => {
-        switch (activeView) {
-            case 'character-form':
-                return <CharacterForm character={editingCharacter} onSave={handleSaveCharacter} onCancel={() => setActiveView('chat')} onGenerateImage={handleGenerateImage} availableDocuments={appData.knowledgeBase || []} />;
-            case 'plugins':
-                return <PluginManager plugins={appData.plugins || []} onPluginsUpdate={handlePluginsUpdate} onSetConfirmation={setConfirmationRequest} />;
-            case 'lorebooks':
-                return <LorebookManager lorebooks={appData.lorebooks || []} onLorebooksUpdate={handleLorebooksUpdate} onSetConfirmation={setConfirmationRequest} />;
-            case 'library':
-                return <DocumentLibrary documents={appData.knowledgeBase || []} onUpdateDocuments={handleUpdateDocuments} onSetConfirmation={setConfirmationRequest} />;
-            case 'chat':
-            default:
-                return selectedChat ? (
-                    <ChatInterface
-                        key={selectedChat.id}
-                        session={selectedChat}
-                        allCharacters={appData.characters}
-                        allChatSessions={appData.chatSessions}
-                        allLorebooks={appData.lorebooks || []}
-                        userKeys={appData.userKeys}
-                        // File System Props
-                        fileSystem={fileSystemState}
-                        onUpdateFileSystem={updateFileSystem}
-                        // ---
-                        onSessionUpdate={handleSessionUpdate}
-                        onTriggerHook={triggerPluginHook}
-                        onCharacterUpdate={handleCharacterUpdate}
-                        onMemoryImport={handleMemoryImport}
-                        onSaveBackup={handleSaveBackup}
-                        handlePluginApiRequest={handlePluginApiRequest}
-                    />
-                ) : (
-                    <div className="flex-1 flex items-center justify-center h-full bg-background-secondary">
-                        <div className="text-center text-text-secondary">
-                            <h2 className="text-2xl">Welcome to AI Nexus</h2>
-                            <p>Select a chat or create a new one to begin.</p>
-                        </div>
-                    </div>
-                );
-        }
-    };
-
-    const renderPanelContent = () => {
-        switch (activePanel) {
-            case 'chats':
-                return (
-                    <>
-                        <div className="flex justify-between items-center mb-2">
-                            <h2 className="text-lg font-semibold text-text-primary">Chats</h2>
-                            <button onClick={() => setIsChatModalVisible(true)} className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors" title="New Chat">
-                                <PlusIcon className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <ChatList 
-                            chatSessions={appData.chatSessions.filter(c => !!c.isArchived === showArchivedChats)}
-                            characters={appData.characters}
-                            selectedChatId={selectedChatId}
-                            onSelectChat={handleSelectChat}
-                            onDeleteChat={handleArchiveChat}
-                            onExportChat={handleExportChat}
-                            showArchived={showArchivedChats}
-                            onToggleArchiveView={() => setShowArchivedChats(!showArchivedChats)}
-                            onRestoreChat={handleRestoreChat}
-                            onPermanentlyDeleteChat={handlePermanentlyDeleteChat}
-                        />
-                    </>
-                );
-            case 'characters':
-                return (
-                     <CharacterList 
-                        characters={appData.characters.filter(c => !!c.isArchived === showArchivedCharacters)}
-                        onDeleteCharacter={handleArchiveCharacter}
-                        onEditCharacter={handleEditCharacter}
-                        onAddNew={handleAddNewCharacter}
-                        onExportCharacter={handleExportCharacter}
-                        showArchived={showArchivedCharacters}
-                        onToggleArchiveView={() => setShowArchivedCharacters(!showArchivedCharacters)}
-                        onRestoreCharacter={handleRestoreCharacter}
-                        onPermanentlyDeleteCharacter={handlePermanentlyDeleteCharacter}
-                    />
-                );
-            case 'lorebooks':
-                return <LorebookManager 
-                            lorebooks={appData.lorebooks || []}
-                            onLorebooksUpdate={handleLorebooksUpdate}
-                            onSetConfirmation={setConfirmationRequest}
-                        />;
-            case 'library':
-                return <DocumentLibrary 
-                    documents={appData.knowledgeBase || []}
-                    onUpdateDocuments={handleUpdateDocuments}
-                    onSetConfirmation={setConfirmationRequest}
-                />;
-            case 'none':
-                return null;
-        }
-    };
-
-
     return (
-        <div 
-            className="relative h-screen w-screen overflow-hidden bg-background-primary text-text-primary font-sans flex transition-all duration-500"
-            style={selectedChat?.uiSettings?.backgroundImage ? {
-                backgroundImage: `url('${selectedChat.uiSettings.backgroundImage}')`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-            } : {}}
-        >
+        <div className="relative h-screen w-screen overflow-hidden bg-background-primary text-text-primary flex" style={selectedChat?.uiSettings?.backgroundImage ? { backgroundImage: `url('${selectedChat.uiSettings.backgroundImage}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
             <div className="absolute inset-0 bg-background-primary/80 backdrop-blur-sm"></div>
             {isLogViewerVisible && <LogViewer onClose={() => setIsLogViewerVisible(false)} />}
             {isHelpVisible && <HelpModal onClose={() => setIsHelpVisible(false)} />}
             {isChatModalVisible && <ChatSelectionModal characters={appData.characters.filter(c => !c.isArchived)} lorebooks={appData.lorebooks || []} onClose={() => setIsChatModalVisible(false)} onCreateChat={handleCreateChat}/>}
-            {isAppearanceModalVisible && (
-                <AppearanceModal 
-                    settings={selectedChat?.uiSettings || {}}
-                    currentChat={selectedChat}
-                    allCharacters={appData.characters}
-                    onUpdate={handleUiSettingsUpdate}
-                    onGenerateImage={handleGenerateImage}
-                    onClose={() => setIsAppearanceModalVisible(false)}
-                />
-            )}
-            {confirmationRequest && (
-                <ConfirmationModal 
-                    message={confirmationRequest.message}
-                    onConfirm={confirmationRequest.onConfirm}
-                    onCancel={confirmationRequest.onCancel}
-                />
-            )}
+            {isAppearanceModalVisible && <AppearanceModal settings={selectedChat?.uiSettings || {}} currentChat={selectedChat} allCharacters={appData.characters} onUpdate={handleUiSettingsUpdate} onGenerateImage={geminiService.generateImageFromPrompt} onClose={() => setIsAppearanceModalVisible(false)}/>}
+            {confirmationRequest && <ConfirmationModal message={confirmationRequest.message} onConfirm={confirmationRequest.onConfirm} onCancel={() => setConfirmationRequest(null)}/>}
 
             <div className="relative flex-shrink-0 bg-background-secondary/80 w-16 flex flex-col items-center justify-between py-4 border-r border-border-neutral z-20">
                 <div className="flex flex-col items-center space-y-2">
-                    <button onClick={() => { handlePanelToggle('chats'); setActiveView('chat'); }} title="Chats" className={`p-2 rounded-lg ${activePanel === 'chats' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}>
-                        <ChatBubbleIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => { handlePanelToggle('characters'); }} title="Characters" className={`p-2 rounded-lg ${activePanel === 'characters' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}>
-                        <UsersIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => { handlePanelToggle('lorebooks'); }} title="Lorebooks" className={`p-2 rounded-lg ${activePanel === 'lorebooks' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}>
-                        <GlobeIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => { handlePanelToggle('library'); setActiveView('library'); }} title="Document Library" className={`p-2 rounded-lg ${activePanel === 'library' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}>
-                        <FolderIcon className="w-6 h-6" />
-                    </button>
-                     <button onClick={() => { setActiveView('plugins'); setActivePanel('none'); }} title="Plugins" className={`p-2 rounded-lg ${activeView === 'plugins' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}>
-                        <CodeIcon className="w-6 h-6" />
-                    </button>
-
+                    <button onClick={() => { handlePanelToggle('chats'); setActiveView('chat'); }} title="Chats" className={`p-2 rounded-lg ${activePanel === 'chats' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><ChatBubbleIcon className="w-6 h-6"/></button>
+                    <button onClick={() => { handlePanelToggle('characters'); }} title="Characters" className={`p-2 rounded-lg ${activePanel === 'characters' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><UsersIcon className="w-6 h-6"/></button>
+                    <button onClick={() => { handlePanelToggle('lorebooks'); }} title="Lorebooks" className={`p-2 rounded-lg ${activePanel === 'lorebooks' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><GlobeIcon className="w-6 h-6"/></button>
+                    <button onClick={() => { handlePanelToggle('library'); setActiveView('library'); }} title="Library" className={`p-2 rounded-lg ${activePanel === 'library' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><FolderIcon className="w-6 h-6"/></button>
+                    <button onClick={() => { setActiveView('plugins'); setActivePanel('none'); }} title="Plugins" className={`p-2 rounded-lg ${activeView === 'plugins' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><CodeIcon className="w-6 h-6"/></button>
                     <div className="w-8 border-t border-border-neutral my-2"></div>
-                    
-                    <button onClick={() => setIsAppearanceModalVisible(true)} title="Appearance Settings" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary">
-                        <PaletteIcon className="w-6 h-6" />
-                    </button>
-                    <input type="file" ref={fileInputRef} onChange={handleImportData} accept=".json" className="hidden" />
-                    <button onClick={handleSaveBackup} title="Save Full Backup" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary">
-                        <DownloadIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => fileInputRef.current?.click()} title="Import Data" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary">
-                        <UploadIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => setIsLogViewerVisible(true)} title="View Logs" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary">
-                        <TerminalIcon className="w-6 h-6" />
-                    </button>
-                    <button onClick={() => setIsHelpVisible(true)} title="Help" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary">
-                        <HelpIcon className="w-6 h-6" />
-                    </button>
-
+                    <button onClick={() => setIsAppearanceModalVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><PaletteIcon className="w-6 h-6"/></button>
+                    <button onClick={() => setIsLogViewerVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><TerminalIcon className="w-6 h-6"/></button>
+                    <button onClick={() => setIsHelpVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><HelpIcon className="w-6 h-6"/></button>
                 </div>
-                <div className="flex flex-col items-center">
-                    <ThemeSwitcher />
-                </div>
+                <ThemeSwitcher />
             </div>
 
-            <aside className={`relative flex-shrink-0 transform transition-all duration-300 ease-in-out bg-background-secondary/80 border-r border-border-neutral flex flex-col overflow-hidden ${activePanel !== 'none' ? 'w-80 p-4' : 'w-0 p-0 border-r-0'}`}>
-                {renderPanelContent()}
+            <aside className={`relative flex-shrink-0 transition-all duration-300 bg-background-secondary/80 border-r border-border-neutral flex flex-col overflow-hidden ${activePanel !== 'none' ? 'w-80 p-4' : 'w-0 p-0 border-r-0'}`}>
+                {activePanel === 'chats' && <ChatList chatSessions={appData.chatSessions.filter(c => !c.isArchived)} characters={appData.characters} selectedChatId={selectedChatId} onSelectChat={(id) => { setSelectedChatId(id); setActiveView('chat'); }} onDeleteChat={() => {}} onExportChat={() => {}} showArchived={false} onToggleArchiveView={() => {}} onRestoreChat={() => {}} onPermanentlyDeleteChat={() => {}}/>}
+                {activePanel === 'characters' && <CharacterList characters={appData.characters.filter(c => !c.isArchived)} onDeleteCharacter={() => {}} onEditCharacter={(c) => { setEditingCharacter(c); setActiveView('character-form'); }} onAddNew={() => { setEditingCharacter(null); setActiveView('character-form'); }} onExportCharacter={() => {}} showArchived={false} onToggleArchiveView={() => {}} onRestoreCharacter={() => {}} onPermanentlyDeleteCharacter={() => {}}/>}
             </aside>
             
             <main className="relative flex-1 flex flex-col h-full overflow-hidden">
-                {selectedChat?.uiSettings?.bannerImage && (
-                    <div className="w-full h-32 md:h-48 flex-shrink-0 bg-black/20">
-                        <img src={selectedChat.uiSettings.bannerImage} className="w-full h-full object-cover" alt="Banner"/>
-                    </div>
-                )}
-                <div className="flex-1 min-h-0">
-                    {renderMainContent()}
-                </div>
+                {activeView === 'chat' && selectedChat && <ChatInterface session={selectedChat} allCharacters={appData.characters} allChatSessions={appData.chatSessions} allLorebooks={appData.lorebooks || []} userKeys={appData.userKeys} fileSystem={fileSystemState} onUpdateFileSystem={updateFileSystem} onSessionUpdate={handleSessionUpdate} onTriggerHook={triggerPluginHook} onCharacterUpdate={handleCharacterUpdate} onMemoryImport={() => {}} onSaveBackup={() => {}} handlePluginApiRequest={handlePluginApiRequest}/>}
+                {activeView === 'character-form' && <CharacterForm character={editingCharacter} onSave={handleSaveCharacter} onCancel={() => setActiveView('chat')} onGenerateImage={geminiService.generateImageFromPrompt} availableDocuments={appData.knowledgeBase || []}/>}
+                {activeView === 'plugins' && <PluginManager plugins={appData.plugins || []} onPluginsUpdate={(p) => { setAppData(prev => ({ ...prev, plugins: p })); persistData({ ...appData, plugins: p }); }} onSetConfirmation={setConfirmationRequest}/>}
+                {activeView === 'library' && <DocumentLibrary documents={appData.knowledgeBase || []} onUpdateDocuments={(d) => { setAppData(prev => ({ ...prev, knowledgeBase: d })); persistData({ ...appData, knowledgeBase: d }); }} onSetConfirmation={setConfirmationRequest}/>}
             </main>
         </div>
     );
