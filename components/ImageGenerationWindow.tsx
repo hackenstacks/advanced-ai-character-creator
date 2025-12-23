@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { SpinnerIcon } from './icons/SpinnerIcon.tsx';
 import { ImageIcon } from './icons/ImageIcon.tsx';
+import { CogIcon } from './icons/CogIcon.tsx';
+// Add missing TrashIcon import
+import { TrashIcon } from './icons/TrashIcon.tsx';
 
 interface ImageGenerationWindowProps {
   onGenerate: (prompt: string) => Promise<{ url?: string; error?: string }>;
@@ -20,7 +23,6 @@ export const ImageGenerationWindow: React.FC<ImageGenerationWindowProps> = ({ on
   const windowRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only drag by the header
     if (windowRef.current && (e.target as HTMLElement).closest('.drag-handle')) {
         setIsDragging(true);
         const rect = windowRef.current.getBoundingClientRect();
@@ -78,7 +80,21 @@ export const ImageGenerationWindow: React.FC<ImageGenerationWindowProps> = ({ on
       onMouseDown={handleMouseDown}
     >
       <header className="drag-handle p-4 border-b border-border-neutral flex justify-between items-center cursor-move">
-        <h2 className="text-lg font-bold text-text-primary">Image Generation</h2>
+        <div className="flex items-center space-x-2">
+            <h2 className="text-lg font-bold text-text-primary">Image Generation</h2>
+            <button 
+                title="Configure Image API"
+                className="p-1 hover:bg-background-tertiary rounded-full text-text-secondary"
+                onClick={() => {
+                    // This is a bit of a hack to communicate back to MainLayout
+                    // Since we don't have a formal router, we use global events or just close
+                    // But here we'll just alert the user or assume they can find it in plugins
+                    alert("To set up API endpoints, go to the Plugins panel (Code Icon) and edit 'Image Generation'.");
+                }}
+            >
+                <CogIcon className="w-4 h-4" />
+            </button>
+        </div>
         <button onClick={onClose} className="text-text-secondary hover:text-text-primary transition-colors text-2xl font-bold leading-none p-1">&times;</button>
       </header>
       <div className="p-4 space-y-4">
@@ -93,10 +109,17 @@ export const ImageGenerationWindow: React.FC<ImageGenerationWindowProps> = ({ on
             placeholder="A robot holding a red skateboard..."
           />
         </div>
-        <div className="h-64 bg-background-primary rounded-md flex items-center justify-center overflow-hidden">
+        <div className="h-64 bg-background-primary rounded-md flex items-center justify-center overflow-hidden relative group/imgcontainer">
           {isLoading && <SpinnerIcon className="w-10 h-10 animate-spin text-primary-500" />}
           {error && <p className="text-accent-red text-sm text-center p-4">{error}</p>}
-          {imageUrl && <img src={imageUrl} alt="Generated Image" className="w-full h-full object-contain" />}
+          {imageUrl && (
+              <>
+                <img src={imageUrl} alt="Generated Image" className="w-full h-full object-contain" />
+                <div className="absolute top-2 right-2 opacity-0 group-hover/imgcontainer:opacity-100 flex space-x-1 bg-black/50 p-1 rounded backdrop-blur transition-opacity">
+                    <button onClick={() => setImageUrl(null)} className="p-1 text-white hover:text-accent-red" title="Discard Image"><TrashIcon className="w-4 h-4" /></button>
+                </div>
+              </>
+          )}
           {!isLoading && !error && !imageUrl && <ImageIcon className="w-16 h-16 text-text-secondary/50" />}
         </div>
       </div>

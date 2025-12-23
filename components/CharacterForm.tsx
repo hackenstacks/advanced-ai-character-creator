@@ -1,13 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Character, ApiConfig, EmbeddingConfig, RagSource } from '../types.ts';
-import * as ttsService from '../services/ttsService.ts';
 import * as geminiService from '../services/geminiService.ts';
 import { logger } from '../services/loggingService.ts';
-import { UploadIcon } from './icons/UploadIcon.tsx';
 import { SparklesIcon } from './icons/SparklesIcon.tsx';
 import { SpinnerIcon } from './icons/SpinnerIcon.tsx';
-import { TerminalIcon } from './icons/TerminalIcon.tsx';
 import { TrashIcon } from './icons/TrashIcon.tsx';
 import { PlusIcon } from './icons/PlusIcon.tsx';
 
@@ -95,12 +92,12 @@ const API_PRESETS: Record<string, { label: string, service: any, endpoint: strin
 const Section: React.FC<{ title: string, children: React.ReactNode, defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     return (
-        <div className="rounded-md border border-border-neutral bg-background-secondary/50">
-            <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full text-left p-4 flex justify-between items-center">
+        <div className="rounded-md border border-border-neutral bg-background-secondary/50 overflow-hidden shadow-sm">
+            <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full text-left p-4 flex justify-between items-center bg-background-secondary hover:bg-background-tertiary transition-colors">
                 <h3 className="text-lg font-medium text-text-primary">{title}</h3>
                 <svg className={`w-5 h-5 text-text-secondary transform transition-transform ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
             </button>
-            {isOpen && <div className="p-4 border-t border-border-neutral space-y-4">{children}</div>}
+            {isOpen && <div className="p-5 border-t border-border-neutral space-y-4 animate-in slide-in-from-top-2">{children}</div>}
         </div>
     );
 }
@@ -109,7 +106,6 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
   const [formState, setFormState] = useState<Character>({} as Character);
   const [isAiLoading, setIsAiLoading] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<string>('pollinations');
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (character) {
@@ -161,13 +157,11 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
     }
   };
 
-  // FIX: Explicitly cast currentLore to string[] to resolve 'unknown[]' type inference issue on line 184.
   const handleLoreAdd = () => {
     const currentLore = (formState.lore || []) as string[];
     handleFormChange('lore', [...currentLore, '']);
   };
 
-  // FIX: Explicitly cast currentLore to string[] for consistent type handling.
   const handleLoreChange = (idx: number, val: string) => {
     const currentLore = (formState.lore || []) as string[];
     const updated = [...currentLore];
@@ -175,14 +169,14 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
     handleFormChange('lore', updated);
   };
 
-  // FIX: Explicitly cast currentLore to string[] for consistent type handling.
   const handleLoreDelete = (idx: number) => {
     const currentLore = (formState.lore || []) as string[];
     handleFormChange('lore', currentLore.filter((_, i) => i !== idx));
   };
 
+  // FIX: Explicitly type the Set as Set<string> to prevent unknown[] inference error when calling Array.from(current).
   const handleToggleKnowledge = (id: string) => {
-    const current = new Set(formState.knowledgeSourceIds || []);
+    const current = new Set<string>(formState.knowledgeSourceIds || []);
     if (current.has(id)) current.delete(id);
     else current.add(id);
     handleFormChange('knowledgeSourceIds', Array.from(current));
@@ -200,10 +194,10 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
 
   return (
     <div className="flex-1 flex flex-col bg-background-primary h-full">
-      <header className="flex items-center p-4 border-b border-border-neutral flex-shrink-0">
+      <header className="flex items-center p-4 border-b border-border-neutral flex-shrink-0 bg-background-secondary/30">
           <h2 className="text-xl font-bold text-text-primary">{character ? 'Edit Character' : 'Create Character'}</h2>
       </header>
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
         <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl mx-auto">
             <Section title="Core Identity">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -211,7 +205,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                       <label className="block text-sm font-medium text-text-primary">Name</label>
                       <div className="mt-1 flex space-x-2">
                         <input type="text" value={formState.name} onChange={(e) => handleFormChange('name', e.target.value)} required className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"/>
-                        <button type="button" onClick={() => handleAiAssist('name')} className="p-2 bg-background-tertiary rounded-md" title="AI Suggest Name">
+                        <button type="button" onClick={() => handleAiAssist('name')} className="p-2 bg-background-tertiary rounded-md hover:text-primary-500 transition-colors" title="AI Suggest Name">
                             {isAiLoading === 'name' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                         </button>
                       </div>
@@ -220,7 +214,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                       <label className="block text-sm font-medium text-text-primary">Tags (comma separated)</label>
                       <div className="mt-1 flex space-x-2">
                         <input type="text" value={formState.tags?.join(', ')} onChange={(e) => handleFormChange('tags', e.target.value.split(',').map(t => t.trim()))} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                        <button type="button" onClick={() => handleAiAssist('tags')} className="p-2 bg-background-tertiary rounded-md" title="AI Suggest Tags">
+                        <button type="button" onClick={() => handleAiAssist('tags')} className="p-2 bg-background-tertiary rounded-md hover:text-primary-500 transition-colors" title="AI Suggest Tags">
                             {isAiLoading === 'tags' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                         </button>
                       </div>
@@ -230,7 +224,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                   <label className="block text-sm font-medium text-text-primary">Short Description</label>
                   <div className="mt-1 flex space-x-2">
                     <textarea value={formState.description} onChange={(e) => handleFormChange('description', e.target.value)} rows={2} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('description')} className="p-2 bg-background-tertiary rounded-md h-fit" title="AI Assist Description">
+                    <button type="button" onClick={() => handleAiAssist('description')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors" title="AI Assist Description">
                         {isAiLoading === 'description' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                     </button>
                   </div>
@@ -242,7 +236,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                   <label className="block text-sm font-medium text-text-primary">Physical Appearance</label>
                   <div className="mt-1 flex space-x-2">
                     <textarea value={formState.physicalAppearance} onChange={(e) => handleFormChange('physicalAppearance', e.target.value)} rows={3} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('physicalAppearance')} className="p-2 bg-background-tertiary rounded-md h-fit">
+                    <button type="button" onClick={() => handleAiAssist('physicalAppearance')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
                         {isAiLoading === 'physicalAppearance' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                     </button>
                   </div>
@@ -251,7 +245,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                   <label className="block text-sm font-medium text-text-primary">Personality Traits</label>
                   <div className="mt-1 flex space-x-2">
                     <textarea value={formState.personalityTraits} onChange={(e) => handleFormChange('personalityTraits', e.target.value)} rows={2} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('personalityTraits')} className="p-2 bg-background-tertiary rounded-md h-fit">
+                    <button type="button" onClick={() => handleAiAssist('personalityTraits')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
                         {isAiLoading === 'personalityTraits' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                     </button>
                   </div>
@@ -260,7 +254,7 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                   <label className="block text-sm font-medium text-text-primary">Roleplay Instructions (System Prompt)</label>
                   <div className="mt-1 flex space-x-2">
                     <textarea value={formState.personality} onChange={(e) => handleFormChange('personality', e.target.value)} rows={6} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary font-mono text-sm"/>
-                    <button type="button" onClick={() => handleAiAssist('personality')} className="p-2 bg-background-tertiary rounded-md h-fit">
+                    <button type="button" onClick={() => handleAiAssist('personality')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
                         {isAiLoading === 'personality' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
                     </button>
                   </div>
@@ -270,35 +264,42 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
             <Section title="Lore & Key Facts">
                 <div className="space-y-2">
                     {(formState.lore || []).map((fact, i) => (
-                        <div key={i} className="flex space-x-2">
+                        <div key={i} className="flex space-x-2 animate-in fade-in zoom-in-95">
                             <input type="text" value={fact} onChange={(e) => handleLoreChange(i, e.target.value)} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-1 px-2 text-sm" placeholder="A fact about this character..."/>
-                            <button type="button" onClick={() => handleLoreDelete(i)} className="text-accent-red p-1"><TrashIcon className="w-4 h-4"/></button>
+                            <button type="button" onClick={handleLoreDelete} className="text-accent-red p-1 hover:bg-accent-red/10 rounded"><TrashIcon className="w-4 h-4"/></button>
                         </div>
                     ))}
-                    <button type="button" onClick={handleLoreAdd} className="flex items-center space-x-2 text-primary-500 text-sm font-bold p-2 hover:bg-background-tertiary rounded-md">
-                        <PlusIcon className="w-4 h-4"/> <span>Add Lore Entry</span>
-                    </button>
+                    <div className="flex space-x-2">
+                        <button type="button" onClick={handleLoreAdd} className="flex items-center space-x-2 text-primary-500 text-sm font-bold p-2 hover:bg-primary-500/10 rounded-md transition-colors">
+                            <PlusIcon className="w-4 h-4"/> <span>Add Lore Entry</span>
+                        </button>
+                        <button type="button" onClick={() => handleAiAssist('lore')} className="flex items-center space-x-2 text-text-secondary text-sm font-bold p-2 hover:bg-background-tertiary rounded-md transition-colors">
+                             {isAiLoading === 'lore' ? <SpinnerIcon className="w-4 h-4 animate-spin"/> : <SparklesIcon className="w-4 h-4"/>} <span>AI Help Lore</span>
+                        </button>
+                    </div>
                 </div>
             </Section>
 
             <Section title="Knowledge Base (RAG)">
                 <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg">
+                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg border border-border-neutral">
                         <div>
                             <p className="font-medium text-text-primary">Enable RAG</p>
                             <p className="text-xs text-text-secondary">Allow character to search indexed documents.</p>
                         </div>
-                        <input type="checkbox" checked={formState.ragEnabled} onChange={e => handleFormChange('ragEnabled', e.target.checked)} className="h-5 w-5"/>
+                        <input type="checkbox" checked={formState.ragEnabled} onChange={e => handleFormChange('ragEnabled', e.target.checked)} className="h-5 w-5 rounded border-border-strong text-primary-600 focus:ring-primary-500"/>
                     </div>
                     {formState.ragEnabled && (
-                        <div className="space-y-2">
-                            <p className="text-sm font-medium text-text-primary">Select Documents</p>
-                            <div className="max-h-40 overflow-y-auto border border-border-neutral rounded p-2 space-y-1">
+                        <div className="space-y-2 animate-in slide-in-from-top-2">
+                            <div className="flex justify-between items-center">
+                                <p className="text-sm font-medium text-text-primary">Select Documents</p>
+                            </div>
+                            <div className="max-h-40 overflow-y-auto border border-border-neutral rounded p-2 space-y-1 bg-background-primary/50">
                                 {availableDocuments.length === 0 ? (
-                                    <p className="text-xs text-text-secondary p-2">No documents in library. Upload some in the Library panel.</p>
+                                    <p className="text-xs text-text-secondary p-2 italic">No documents in library. Upload files in the Knowledge panel.</p>
                                 ) : availableDocuments.map(doc => (
-                                    <div key={doc.id} className="flex items-center space-x-2 hover:bg-background-tertiary p-1 rounded cursor-pointer" onClick={() => handleToggleKnowledge(doc.id)}>
-                                        <input type="checkbox" checked={(formState.knowledgeSourceIds || []).includes(doc.id)} readOnly className="h-4 w-4 rounded border-border-strong"/>
+                                    <div key={doc.id} className="flex items-center space-x-2 hover:bg-background-tertiary p-1.5 rounded cursor-pointer transition-colors" onClick={() => handleToggleKnowledge(doc.id)}>
+                                        <input type="checkbox" checked={(formState.knowledgeSourceIds || []).includes(doc.id)} readOnly className="h-4 w-4 rounded border-border-strong text-primary-600"/>
                                         <span className="text-sm text-text-primary truncate">{doc.fileName}</span>
                                     </div>
                                 ))}
@@ -309,34 +310,34 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
             </Section>
 
             <Section title="Advanced AI Traits">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg">
-                        <div>
-                            <p className="font-medium text-text-primary">Deep Thinking</p>
-                            <p className="text-xs text-text-secondary">Enables reasoning chain (Gemini 3 Pro).</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
+                        <div className="min-w-0">
+                            <p className="font-medium text-text-primary truncate">Deep Thinking</p>
+                            <p className="text-xs text-text-secondary">Chain of thought logic.</p>
                         </div>
-                        <input type="checkbox" checked={formState.thinkingEnabled} onChange={e => handleFormChange('thinkingEnabled', e.target.checked)} className="h-5 w-5"/>
+                        <input type="checkbox" checked={formState.thinkingEnabled} onChange={e => handleFormChange('thinkingEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg">
-                        <div>
-                            <p className="font-medium text-text-primary">Google Search</p>
-                            <p className="text-xs text-text-secondary">Access to real-time information.</p>
+                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
+                        <div className="min-w-0">
+                            <p className="font-medium text-text-primary truncate">Google Search</p>
+                            <p className="text-xs text-text-secondary">Real-time web browsing.</p>
                         </div>
-                        <input type="checkbox" checked={formState.searchEnabled} onChange={e => handleFormChange('searchEnabled', e.target.checked)} className="h-5 w-5"/>
+                        <input type="checkbox" checked={formState.searchEnabled} onChange={e => handleFormChange('searchEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg">
-                        <div>
-                            <p className="font-medium text-text-primary">Terminal Access</p>
-                            <p className="text-xs text-text-secondary">Execute simulated shell commands.</p>
+                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
+                        <div className="min-w-0">
+                            <p className="font-medium text-text-primary truncate">Terminal Access</p>
+                            <p className="text-xs text-text-secondary">OS control via sandbox.</p>
                         </div>
-                        <input type="checkbox" checked={formState.terminalEnabled} onChange={e => handleFormChange('terminalEnabled', e.target.checked)} className="h-5 w-5"/>
+                        <input type="checkbox" checked={formState.terminalEnabled} onChange={e => handleFormChange('terminalEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg">
-                        <div>
-                            <p className="font-medium text-text-primary">Dynamic Avatar</p>
-                            <p className="text-xs text-text-secondary">Avatar changes with mood/context.</p>
+                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
+                        <div className="min-w-0">
+                            <p className="font-medium text-text-primary truncate">Dynamic Avatar</p>
+                            <p className="text-xs text-text-secondary">Avatar changes with mood.</p>
                         </div>
-                        <input type="checkbox" checked={formState.dynamicAvatarEnabled} onChange={e => handleFormChange('dynamicAvatarEnabled', e.target.checked)} className="h-5 w-5"/>
+                        <input type="checkbox" checked={formState.dynamicAvatarEnabled} onChange={e => handleFormChange('dynamicAvatarEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
                     </div>
                 </div>
             </Section>
@@ -371,8 +372,8 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
             </Section>
 
             <div className="flex justify-end space-x-4 pt-4 pb-10">
-              <button type="button" onClick={onCancel} className="py-3 px-6 border border-border-strong rounded-lg text-text-primary font-bold hover:bg-background-tertiary">Cancel</button>
-              <button type="submit" className="py-3 px-8 rounded-lg text-text-accent bg-primary-600 font-bold shadow-lg hover:bg-primary-500">Save Character</button>
+              <button type="button" onClick={onCancel} className="py-3 px-6 border border-border-strong rounded-lg text-text-primary font-bold hover:bg-background-tertiary transition-all">Cancel</button>
+              <button type="submit" className="py-3 px-8 rounded-lg text-text-accent bg-primary-600 font-bold shadow-lg hover:bg-primary-500 transition-all active:scale-95">Save Character</button>
             </div>
         </form>
       </div>

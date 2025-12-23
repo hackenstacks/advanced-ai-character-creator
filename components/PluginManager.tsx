@@ -7,6 +7,8 @@ import { EditIcon } from './icons/EditIcon.tsx';
 import { PowerIcon } from './icons/PowerIcon.tsx';
 import { UploadIcon } from './icons/UploadIcon.tsx';
 import { DownloadIcon } from './icons/DownloadIcon.tsx';
+// Add missing ImageIcon import
+import { ImageIcon } from './icons/ImageIcon.tsx';
 
 interface PluginManagerProps {
   plugins: Plugin[];
@@ -15,27 +17,13 @@ interface PluginManagerProps {
 }
 
 const examplePluginCode = `// Example Plugin: UPPERCASE every message
-// This plugin intercepts every message sent by the user and converts it to uppercase.
-
-// Use nexus.hooks.register to listen for specific events in the application.
-// 'beforeMessageSend' is triggered right before a user's message is sent to the AI.
 nexus.hooks.register('beforeMessageSend', (payload) => {
-  // payload is an object like { content: "some message" }
-  // Use nexus.log for safe debugging from the sandbox.
-  nexus.log('Plugin transforming message:', payload.content);
-
-  const modifiedContent = payload.content.toUpperCase();
-
-  // The hook must return an object with the same structure as the payload.
-  return { content: modifiedContent };
+  return { content: payload.content.toUpperCase() };
 });
-
-nexus.log('UPPERCASE plugin loaded and ready.');
 `;
 
 const imageStyles = ["Default (None)", "Anime/Manga", "Photorealistic", "Digital Painting", "Fantasy Art", "Cyberpunk", "Vintage Photo", "Low Poly", "Custom"];
 
-// Constants for Image Providers and their Models
 const PROVIDER_MODELS: Record<string, string[]> = {
     'pollinations': [
         'flux', 
@@ -53,9 +41,6 @@ const PROVIDER_MODELS: Record<string, string[]> = {
     'aihorde': [
         'stable_diffusion',
         'stable_diffusion_2.1',
-        'ICBINP - I Can\'t Believe It\'s Not Photography',
-        'ChilloutMix',
-        'Deliberate',
         'Dreamshaper',
         'Realistic Vision',
         'Anything Diffusion',
@@ -65,23 +50,16 @@ const PROVIDER_MODELS: Record<string, string[]> = {
     'huggingface': [
         'stabilityai/stable-diffusion-xl-base-1.0',
         'runwayml/stable-diffusion-v1-5',
-        'prompthero/openjourney',
-        'CompVis/stable-diffusion-v1-4',
         'black-forest-labs/FLUX.1-dev',
-        'black-forest-labs/FLUX.1-schnell',
-        'stabilityai/stable-diffusion-2-1',
-        'hakurei/waifu-diffusion',
-        'WarriorMama777/OrangeMixs'
+        'black-forest-labs/FLUX.1-schnell'
     ],
     'stability': [
         'stable-diffusion-xl-1024-v1-0',
-        'stable-diffusion-v1-6',
-        'stable-diffusion-512-v2-1'
+        'stable-diffusion-v1-6'
     ],
     'gemini': ['gemini-2.5-flash-image'],
     'default': ['gemini-2.5-flash-image'],
-    'openai': ['dall-e-3', 'dall-e-2'],
-    'imagerouter': [] // Typically routed dynamically or OpenAI compatible
+    'openai': ['dall-e-3', 'dall-e-2']
 };
 
 export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPluginsUpdate, onSetConfirmation }) => {
@@ -118,11 +96,9 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
     let updatedPlugins;
     if (editingPlugin) {
       updatedPlugins = plugins.map(p => p.id === editingPlugin.id ? { ...editingPlugin, ...formState } : p);
-      logger.log(`Plugin updated: ${formState.name}`);
     } else {
       const newPlugin: Plugin = { ...formState, id: crypto.randomUUID(), enabled: false };
       updatedPlugins = [...plugins, newPlugin];
-      logger.log(`Plugin created: ${formState.name}`);
     }
     onPluginsUpdate(updatedPlugins);
     setEditingPlugin(null);
@@ -130,13 +106,10 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
   };
   
   const handleDelete = (pluginId: string) => {
-    const pluginName = plugins.find(p => p.id === pluginId)?.name || 'Unknown';
     onSetConfirmation({
-        message: `Are you sure you want to delete the plugin "${pluginName}"? This action cannot be undone.`,
+        message: `Delete plugin?`,
         onConfirm: () => {
-            const updatedPlugins = plugins.filter(p => p.id !== pluginId);
-            onPluginsUpdate(updatedPlugins);
-            logger.log(`Plugin deleted: ${pluginName}`);
+            onPluginsUpdate(plugins.filter(p => p.id !== pluginId));
             onSetConfirmation(null);
         },
         onCancel: () => onSetConfirmation(null),
@@ -144,110 +117,13 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
   };
 
   const handleToggle = (pluginId: string) => {
-    // Prevent disabling core plugins
-    if (pluginId === 'default-image-generator' || pluginId === 'default-tts-narrator') {
-        alert("This is a core plugin and cannot be disabled.");
-        return;
-    }
-    const updatedPlugins = plugins.map(p => p.id === pluginId ? { ...p, enabled: !p.enabled } : p);
-    onPluginsUpdate(updatedPlugins);
-    const plugin = updatedPlugins.find(p => p.id === pluginId);
-    if (plugin) {
-        logger.log(`Plugin ${plugin.enabled ? 'enabled' : 'disabled'}: ${plugin.name}`);
-    }
+    if (pluginId === 'default-image-generator' || pluginId === 'default-tts-narrator') return;
+    onPluginsUpdate(plugins.map(p => p.id === pluginId ? { ...p, enabled: !p.enabled } : p));
   };
   
   const handleCancel = () => {
     setEditingPlugin(null);
     setIsCreating(false);
-  };
-  
-  const triggerDownload = (filename: string, content: string) => {
-    const blob = new Blob([content], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportAll = () => {
-    try {
-      const jsonString = JSON.stringify(plugins, null, 2);
-      const filename = 'ai-nexus-plugins.json';
-      triggerDownload(filename, jsonString);
-      logger.log(`Exported all ${plugins.length} plugins.`, { filename });
-    } catch (error) {
-        logger.error("Failed to export all plugins.", error);
-        alert("Failed to export plugins. Check logs for details.");
-    }
-  };
-
-  const handleExportPlugin = (plugin: Plugin) => {
-    try {
-        const jsonString = JSON.stringify(plugin, null, 2);
-        const filename = `${plugin.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-        triggerDownload(filename, jsonString);
-        logger.log(`Exported plugin: ${plugin.name}`, { filename });
-    } catch (error) {
-        logger.error(`Failed to export plugin: ${plugin.name}`, error);
-        alert("Failed to export plugin. Check logs for details.");
-    }
-  };
-
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    logger.log(`Starting plugin import from file: ${file.name}`);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const imported = JSON.parse(text);
-        
-        let pluginsToImport: Plugin[] = [];
-
-        const isValidPlugin = (p: any): p is Plugin => {
-          return p && typeof p.name === 'string' && typeof p.code === 'string';
-        };
-
-        if (Array.isArray(imported)) {
-          pluginsToImport = imported.filter(isValidPlugin);
-        } else if (isValidPlugin(imported)) {
-          pluginsToImport = [imported];
-        } else {
-            throw new Error("Invalid plugin file format. Expected a plugin object or an array of plugins.");
-        }
-
-        if (pluginsToImport.length === 0) {
-            alert("No valid plugins found in the file.");
-            logger.warn("Plugin import completed with no valid plugins found.", { filename: file.name });
-            return;
-        }
-
-        const newPlugins = pluginsToImport.map(p => ({
-            ...p,
-            id: crypto.randomUUID(), // Assign new ID to avoid conflicts
-            enabled: false, // Import as disabled for security
-        }));
-
-        const finalPlugins = [...plugins, ...newPlugins];
-        onPluginsUpdate(finalPlugins);
-        logger.log(`${newPlugins.length} plugin(s) imported successfully. They are disabled by default.`);
-        alert(`${newPlugins.length} plugin(s) imported successfully. They are disabled by default.`);
-
-      } catch (error) {
-        logger.error("Plugin import failed:", error);
-        alert(`Failed to import plugins. Check logs for details. Error: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
   };
   
   const handleSettingsChange = (key: string, value: any) => {
@@ -261,205 +137,161 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
   };
   
   const isDefaultImagePlugin = editingPlugin?.id === 'default-image-generator';
-  const isDefaultTtsPlugin = editingPlugin?.id === 'default-tts-narrator';
 
-  // Helper to get available models for the current service
   const getCurrentServiceModels = () => {
-      const service = formState.settings?.service || 'default';
+      const service = formState.settings?.service || 'pollinations';
       return PROVIDER_MODELS[service] || [];
   };
 
   const currentModels = getCurrentServiceModels();
-  const showApiEndpoint = ['openai', 'imagerouter'].includes(formState.settings?.service);
-  const showApiKey = ['openai', 'gemini', 'stability', 'huggingface', 'aihorde', 'imagerouter'].includes(formState.settings?.service);
+  const showApiEndpoint = ['openai'].includes(formState.settings?.service);
+  const showApiKey = ['openai', 'gemini', 'stability', 'huggingface', 'aihorde'].includes(formState.settings?.service);
 
   if (editingPlugin || isCreating) {
      return (
-      <div className="flex-1 flex flex-col bg-nexus-gray-light-200 dark:bg-nexus-gray-900 h-full">
-         <header className="flex items-center p-4 border-b border-nexus-gray-light-300 dark:border-nexus-gray-700 flex-shrink-0">
-            <h2 className="text-xl font-bold text-nexus-gray-900 dark:text-white">{isDefaultImagePlugin ? 'Configure Plugin' : (editingPlugin ? 'Edit Plugin' : 'Create New Plugin')}</h2>
+      <div className="flex-1 flex flex-col bg-background-primary h-full">
+         <header className="flex items-center p-4 border-b border-border-neutral flex-shrink-0">
+            <h2 className="text-xl font-bold text-text-primary">{isDefaultImagePlugin ? 'Image Generation Config' : (editingPlugin ? 'Edit Plugin' : 'Create Plugin')}</h2>
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
             <div className="space-y-6 max-w-4xl mx-auto">
-              <input
-                type="text"
-                placeholder="Plugin Name"
-                value={formState.name}
-                onChange={(e) => setFormState(s => ({...s, name: e.target.value}))}
-                className="w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                readOnly={isDefaultImagePlugin || isDefaultTtsPlugin}
-              />
-              <textarea
-                placeholder="Plugin Description"
-                value={formState.description}
-                onChange={(e) => setFormState(s => ({...s, description: e.target.value}))}
-                rows={2}
-                className="w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                readOnly={isDefaultTtsPlugin}
-              />
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-text-secondary">Plugin Identity</label>
+                <input
+                    type="text"
+                    placeholder="Plugin Name"
+                    value={formState.name}
+                    onChange={(e) => setFormState(s => ({...s, name: e.target.value}))}
+                    className="w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:outline-none focus:ring-primary-500"
+                    readOnly={isDefaultImagePlugin}
+                />
+                <textarea
+                    placeholder="Plugin Description"
+                    value={formState.description}
+                    onChange={(e) => setFormState(s => ({...s, description: e.target.value}))}
+                    rows={2}
+                    className="w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:outline-none focus:ring-primary-500"
+                />
+              </div>
+
               {isDefaultImagePlugin && (
-                <div className="p-4 rounded-md border border-nexus-gray-light-400 dark:border-nexus-gray-700 bg-nexus-gray-light-200/50 dark:bg-nexus-gray-800/50 space-y-4">
-                  <h3 className="text-lg font-medium text-nexus-gray-900 dark:text-white mb-3">Image Generation Settings</h3>
+                <div className="p-4 rounded-lg border border-primary-500/20 bg-primary-500/5 space-y-4">
+                  <h3 className="text-lg font-bold text-primary-600 flex items-center gap-2">
+                    <ImageIcon className="w-5 h-5" /> Image API Settings
+                  </h3>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        <div>
-                            <label htmlFor="image-style" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">Image Style</label>
+                            <label className="block text-sm font-medium text-text-secondary">Art Style (Prompt Prefix)</label>
                             <select
-                                id="image-style"
                                 value={formState.settings?.style || 'Default (None)'}
                                 onChange={(e) => handleSettingsChange('style', e.target.value)}
-                                className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
+                                className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
                             >
                                 {imageStyles.map(style => <option key={style} value={style}>{style}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label htmlFor="negative-prompt" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">Negative Prompt</label>
-                            <input
-                                type="text"
-                                id="negative-prompt"
-                                value={formState.settings?.negativePrompt || ''}
-                                onChange={(e) => handleSettingsChange('negativePrompt', e.target.value)}
-                                className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                                placeholder="e.g., ugly, blurry, deformed"
-                            />
+                            <label className="block text-sm font-medium text-text-secondary">Provider (Service)</label>
+                            <select 
+                                value={formState.settings?.service || 'pollinations'}
+                                onChange={(e) => {
+                                    handleSettingsChange('service', e.target.value);
+                                    const models = PROVIDER_MODELS[e.target.value] || [];
+                                    handleSettingsChange('model', models.length > 0 ? models[0] : '');
+                                }}
+                                className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500 font-bold"
+                            >
+                                <option value="pollinations">Pollinations.ai (Free, No Key) - DEFAULT</option>
+                                <option value="aihorde">AI Horde (Free/Kudos, Slow)</option>
+                                <option value="huggingface">Hugging Face (Free Tier/Pro)</option>
+                                <option value="stability">Stability.ai (Paid)</option>
+                                <option value="gemini">Google Gemini (Custom Key)</option>
+                                <option value="default">Google Gemini (Env Key)</option>
+                                <option value="openai">OpenAI / Compatible (e.g. Local)</option>
+                            </select>
                         </div>
                    </div>
 
-                     {formState.settings?.style === 'Custom' && (
-                         <div>
-                            <label htmlFor="custom-style-prompt" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">Custom Style Prompt</label>
-                            <textarea
-                                id="custom-style-prompt"
-                                value={formState.settings?.customStylePrompt || ''}
-                                onChange={(e) => handleSettingsChange('customStylePrompt', e.target.value)}
-                                rows={2}
-                                className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                                placeholder="e.g., in the style of vaporwave, cinematic lighting"
-                            />
-                         </div>
-                    )}
-                    
-                  <h3 className="text-lg font-medium text-nexus-gray-900 dark:text-white pt-4 border-t border-nexus-gray-light-400 dark:border-nexus-gray-700">Service Configuration</h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="api-service" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">API Service</label>
-                      <select 
-                          id="api-service"
-                          value={formState.settings?.service || 'pollinations'}
-                          onChange={(e) => {
-                              handleSettingsChange('service', e.target.value);
-                              // Reset model when service changes to first available or empty
-                              const models = PROVIDER_MODELS[e.target.value] || [];
-                              handleSettingsChange('model', models.length > 0 ? models[0] : '');
-                          }}
-                          className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                      >
-                          <option value="pollinations">Pollinations.ai (Free, No Key)</option>
-                          <option value="aihorde">AI Horde (Free/Kudos, Slow)</option>
-                          <option value="huggingface">Hugging Face (Free Tier/Pro)</option>
-                          <option value="imagerouter">ImageRouter.io / OpenAI Compat</option>
-                          <option value="stability">Stability.ai (Paid)</option>
-                          <option value="gemini">Google Gemini (Custom Key)</option>
-                          <option value="default">Google Gemini (Default Env Key)</option>
-                          <option value="openai">OpenAI-Compatible (e.g. DALL-E, Local)</option>
-                      </select>
-                    </div>
-
-                    {/* Dynamic Model Dropdown */}
-                    <div>
-                        <label htmlFor="api-model" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">Model</label>
-                        <div className="flex gap-2">
-                            <select
-                                id="api-model-select"
-                                value={currentModels.includes(formState.settings?.model) ? formState.settings?.model : 'custom'}
-                                onChange={(e) => {
-                                    if(e.target.value !== 'custom') {
-                                        handleSettingsChange('model', e.target.value);
-                                    } else {
-                                        // If switching to custom, keep current value if it was not in list, or clear if it was
-                                        if (currentModels.includes(formState.settings?.model)) {
-                                            handleSettingsChange('model', '');
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary">Model selection</label>
+                            <div className="flex gap-2 flex-col">
+                                <select
+                                    value={currentModels.includes(formState.settings?.model) ? formState.settings?.model : 'custom'}
+                                    onChange={(e) => {
+                                        if(e.target.value !== 'custom') {
+                                            handleSettingsChange('model', e.target.value);
                                         }
-                                    }
-                                }}
-                                className="flex-1 mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                            >
-                                {currentModels.map(m => <option key={m} value={m}>{m}</option>)}
-                                <option value="custom">Other / Custom...</option>
-                            </select>
+                                    }}
+                                    className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
+                                >
+                                    {currentModels.map(m => <option key={m} value={m}>{m}</option>)}
+                                    <option value="custom">-- Enter Custom Model Name --</option>
+                                </select>
+                                {(e => !currentModels.includes(formState.settings?.model) || formState.settings?.model === 'custom') && (
+                                    <input
+                                        type="text"
+                                        value={formState.settings?.model || ''}
+                                        onChange={(e) => handleSettingsChange('model', e.target.value)}
+                                        className="block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
+                                        placeholder="Enter model name (e.g. flux-pro, dall-e-3)"
+                                    />
+                                )}
+                            </div>
                         </div>
-                        {/* Show text input if 'custom' is effectively selected (value not in known list) */}
-                        {(!currentModels.includes(formState.settings?.model) || currentModels.length === 0) && (
-                             <input
-                                id="api-model-text"
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary">Global Negative Prompt</label>
+                            <input
                                 type="text"
-                                value={formState.settings?.model || ''}
-                                onChange={(e) => handleSettingsChange('model', e.target.value)}
-                                className="mt-2 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                                placeholder="Enter custom model ID"
+                                value={formState.settings?.negativePrompt || ''}
+                                onChange={(e) => handleSettingsChange('negativePrompt', e.target.value)}
+                                className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
+                                placeholder="ugly, deformed, blurry..."
                             />
-                        )}
+                        </div>
                     </div>
 
                     {showApiEndpoint && (
                         <div>
-                            <label htmlFor="api-endpoint" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">API Endpoint</label>
+                            <label className="block text-sm font-medium text-text-secondary">Custom API Endpoint (URL)</label>
                             <input
-                                id="api-endpoint"
                                 type="text"
                                 value={formState.settings?.apiEndpoint || ''}
                                 onChange={(e) => handleSettingsChange('apiEndpoint', e.target.value)}
-                                className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                                placeholder="e.g., https://api.openai.com/v1/images/generations"
+                                className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
+                                placeholder="https://api.openai.com/v1/images/generations"
                             />
                         </div>
                     )}
 
                     {showApiKey && (
                         <div>
-                          <label htmlFor="api-key" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">API Key</label>
+                          <label className="block text-sm font-medium text-text-secondary">API Key (Optional/Provider-specific)</label>
                           <input
-                            id="api-key"
                             type="password"
                             value={formState.settings?.apiKey || ''}
                             onChange={(e) => handleSettingsChange('apiKey', e.target.value)}
-                            className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md shadow-sm py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                            placeholder={formState.settings?.service === 'aihorde' ? '0000000000 for Anonymous' : 'Enter API Key'}
+                            className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary focus:ring-primary-500"
+                            placeholder="Enter your API key"
                           />
                         </div>
                     )}
-
-                    <div>
-                        <label htmlFor="plugin-api-rate-limit" className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300">Request Delay (ms)</label>
-                        <input
-                            id="plugin-api-rate-limit"
-                            type="number"
-                            value={formState.settings?.rateLimit || ''}
-                            onChange={(e) => handleSettingsChange('rateLimit', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                            className="mt-1 block w-full bg-nexus-gray-light-100 dark:bg-nexus-gray-800 border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500"
-                            placeholder="e.g., 1000 (for 1 request per second)"
-                            min="0"
-                        />
-                    </div>
-                  </div>
                 </div>
               )}
               <div className="flex flex-col h-96">
-                <label className="block text-sm font-medium text-nexus-gray-800 dark:text-nexus-gray-300 mb-1">Plugin Code (JavaScript)</label>
+                <label className="block text-sm font-bold text-text-secondary mb-1">Source Code (JavaScript)</label>
                 <textarea
-                  placeholder="Enter your plugin code here..."
                   value={formState.code}
                   onChange={(e) => setFormState(s => ({...s, code: e.target.value}))}
-                  className={`flex-1 w-full bg-nexus-light dark:bg-nexus-dark border border-nexus-gray-light-400 dark:border-nexus-gray-700 rounded-md py-2 px-3 text-nexus-gray-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-nexus-blue-500 focus:border-nexus-blue-500 resize-none ${(isDefaultImagePlugin || isDefaultTtsPlugin) ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  className={`flex-1 w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary font-mono text-sm focus:outline-none focus:ring-primary-500 resize-none ${isDefaultImagePlugin ? 'opacity-50 pointer-events-none' : ''}`}
                   spellCheck="false"
-                  readOnly={isDefaultImagePlugin || isDefaultTtsPlugin}
+                  readOnly={isDefaultImagePlugin}
                 />
               </div>
               <div className="flex justify-end space-x-4 pb-4">
-                <button onClick={handleCancel} className="py-2 px-4 rounded-md text-nexus-gray-900 dark:text-white bg-nexus-gray-light-400 dark:bg-nexus-gray-600 hover:bg-nexus-gray-light-500 dark:hover:bg-nexus-gray-500">Cancel</button>
-                <button onClick={handleSave} className="py-2 px-4 rounded-md text-white bg-nexus-blue-600 hover:bg-nexus-blue-500">Save Plugin</button>
+                <button onClick={handleCancel} className="py-2 px-6 rounded-md text-text-primary bg-background-tertiary hover:bg-opacity-80">Cancel</button>
+                <button onClick={handleSave} className="py-2 px-6 rounded-md text-white bg-primary-600 hover:bg-primary-500 font-bold">Save Configuration</button>
               </div>
             </div>
         </div>
@@ -468,21 +300,13 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-nexus-gray-light-200 dark:bg-nexus-gray-900">
-        <header className="flex items-center p-4 border-b border-nexus-gray-light-300 dark:border-nexus-gray-700 flex-shrink-0">
+    <div className="flex-1 flex flex-col h-full bg-background-secondary/20">
+        <header className="flex items-center p-4 border-b border-border-neutral flex-shrink-0 bg-background-secondary">
             <div className="flex-1 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-nexus-gray-900 dark:text-white">Plugin Manager</h2>
+                <h2 className="text-xl font-bold text-text-primary">Plugins & Integrations</h2>
                 <div className="flex items-center space-x-2">
-                    <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden" />
-                    <button onClick={() => fileInputRef.current?.click()} title="Import Plugin(s) from File" className="flex items-center space-x-2 py-2 px-3 rounded-md text-nexus-gray-900 dark:text-white bg-nexus-gray-light-300 dark:bg-nexus-gray-700 hover:bg-nexus-gray-light-400 dark:hover:bg-nexus-gray-600">
-                        <UploadIcon className="w-5 h-5"/>
-                        <span>Import</span>
-                    </button>
-                    <button onClick={handleExportAll} title="Export All Plugins" className="flex items-center space-x-2 py-2 px-3 rounded-md text-nexus-gray-900 dark:text-white bg-nexus-gray-light-300 dark:bg-nexus-gray-700 hover:bg-nexus-gray-light-400 dark:hover:bg-nexus-gray-600">
-                        <DownloadIcon className="w-5 h-5"/>
-                        <span>Export All</span>
-                    </button>
-                    <button onClick={() => setIsCreating(true)} title="Create a New Plugin" className="flex items-center space-x-2 py-2 px-4 rounded-md text-white bg-nexus-blue-600 hover:bg-nexus-blue-500">
+                    <input type="file" ref={fileInputRef} onChange={handleSettingsChange} className="hidden" />
+                    <button onClick={() => setIsCreating(true)} className="flex items-center space-x-2 py-2 px-4 rounded-md text-text-accent bg-primary-600 hover:bg-primary-500 font-bold shadow-sm">
                         <PlusIcon className="w-5 h-5" />
                         <span>New Plugin</span>
                     </button>
@@ -491,28 +315,26 @@ export const PluginManager: React.FC<PluginManagerProps> = ({ plugins, onPlugins
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
             <div className="space-y-4 max-w-4xl mx-auto">
-                {plugins.length === 0 ? (
-                  <p className="text-nexus-gray-700 dark:text-nexus-gray-400 text-center py-8">No plugins installed. Click 'New Plugin' to create one.</p>
-                ) : (
-                  plugins.map(plugin => (
-                    <div key={plugin.id} className="bg-nexus-gray-light-100 dark:bg-nexus-gray-800 p-4 rounded-lg flex items-center justify-between">
+                {plugins.map(plugin => (
+                    <div key={plugin.id} className="bg-background-primary p-5 rounded-xl border border-border-neutral flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex-1 min-w-0">
-                        <p className="text-lg font-semibold text-nexus-gray-900 dark:text-white truncate">{plugin.name}</p>
-                        <p className="text-sm text-nexus-gray-700 dark:text-nexus-gray-400 truncate">{plugin.description}</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-lg font-bold text-text-primary truncate">{plugin.name}</p>
+                            {plugin.id === 'default-image-generator' && <span className="bg-primary-500/10 text-primary-600 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Image Core</span>}
+                        </div>
+                        <p className="text-sm text-text-secondary truncate mt-1">{plugin.description}</p>
                       </div>
-                      <div className="flex items-center space-x-3 ml-4">
-                        <button onClick={() => handleExportPlugin(plugin)} title="Export Plugin" className="text-nexus-gray-600 dark:text-nexus-gray-400 hover:text-nexus-gray-900 dark:hover:text-white"><DownloadIcon className="w-5 h-5"/></button>
-                        <button onClick={() => handleToggle(plugin.id)} title={plugin.enabled ? 'Disable' : 'Enable'}>
-                          <PowerIcon className={`w-6 h-6 ${(plugin.id === 'default-image-generator' || plugin.id === 'default-tts-narrator') ? 'text-nexus-green-500 cursor-not-allowed' : (plugin.enabled ? 'text-nexus-green-500' : 'text-nexus-gray-500 hover:text-white')}`}/>
+                      <div className="flex items-center space-x-2 ml-4">
+                        <button onClick={() => handleToggle(plugin.id)} title={plugin.enabled ? 'Enabled' : 'Disabled'} className="p-2">
+                          <PowerIcon className={`w-6 h-6 ${plugin.enabled ? 'text-accent-green' : 'text-text-secondary opacity-50'}`}/>
                         </button>
-                        <button onClick={() => setEditingPlugin(plugin)} title={plugin.id === 'default-image-generator' ? 'Configure Plugin' : 'Edit Plugin'} className="text-nexus-gray-600 dark:text-nexus-gray-400 hover:text-nexus-gray-900 dark:hover:text-white"><EditIcon className="w-5 h-5" /></button>
-                        {plugin.id !== 'default-image-generator' && plugin.id !== 'default-tts-narrator' && (
-                            <button onClick={() => handleDelete(plugin.id)} title="Delete Plugin" className="text-nexus-gray-600 dark:text-nexus-gray-400 hover:text-red-500 dark:hover:text-red-400"><TrashIcon className="w-5 h-5" /></button>
+                        <button onClick={() => setEditingPlugin(plugin)} className="p-2 text-text-secondary hover:text-text-primary" title="Configure"><EditIcon className="w-6 h-6" /></button>
+                        {plugin.id !== 'default-image-generator' && (
+                            <button onClick={() => handleDelete(plugin.id)} className="p-2 text-text-secondary hover:text-accent-red" title="Delete"><TrashIcon className="w-6 h-6" /></button>
                         )}
                       </div>
                     </div>
-                  ))
-                )}
+                ))}
             </div>
         </div>
     </div>

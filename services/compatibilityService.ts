@@ -4,6 +4,61 @@ import { logger } from './loggingService.ts';
 // --- Utilities ---
 
 /**
+ * Extracts character JSON from a PNG file's tEXt/iTXt chunks.
+ * Standard format for SillyTavern and other AI platforms.
+ */
+export const extractCharaFromPng = async (file: File): Promise<string | null> => {
+    try {
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+        
+        // Check PNG signature: 89 50 4E 47 0D 0A 1A 0A
+        if (view.getUint32(0) !== 0x89504E47 || view.getUint32(4) !== 0x0D0A1A0A) {
+            return null;
+        }
+
+        let offset = 8;
+        const decoder = new TextDecoder();
+
+        while (offset < view.byteLength) {
+            const length = view.getUint32(offset);
+            const type = decoder.decode(new Uint8Array(buffer, offset + 4, 4));
+
+            if (type === 'tEXt' || type === 'iTXt') {
+                const data = new Uint8Array(buffer, offset + 8, length);
+                const text = decoder.decode(data);
+                
+                // Keyword is usually 'chara' followed by a null byte
+                if (text.startsWith('chara\0')) {
+                    let jsonPart = text.substring(6);
+                    // Check if it's base64 encoded (common in V2 cards)
+                    try {
+                        const decoded = atob(jsonPart);
+                        // Validate it's JSON
+                        JSON.parse(decoded);
+                        return decoded;
+                    } catch (e) {
+                        // If not base64, check if it's raw JSON
+                        try {
+                            JSON.parse(jsonPart);
+                            return jsonPart;
+                        } catch (e2) {
+                            return null;
+                        }
+                    }
+                }
+            }
+            // Move to next chunk: length field + type field + data + CRC field
+            offset += length + 12;
+        }
+        return null;
+    } catch (err) {
+        logger.error("Error extracting PNG metadata", err);
+        return null;
+    }
+};
+
+/**
  * Fetches an image from a URL and converts it to a base64 data string.
  * Handles various image types and CORS issues by fetching through the app's context.
  */
@@ -236,6 +291,9 @@ export const sillyTavernWorldInfoToNexus = (data: any, fileName: string): Omit<L
             entriesData = data;
         } else if (data.entries && typeof data.entries === 'object') {
             entriesData = Array.isArray(data.entries) ? data.entries : Object.values(data.entries);
+        } else if (Object.keys(data).every(k => !isNaN(Number(k)))) {
+            // Case where it's an object of entries with numeric keys at top level
+            entriesData = Object.values(data);
         }
     }
 
@@ -244,7 +302,7 @@ export const sillyTavernWorldInfoToNexus = (data: any, fileName: string): Omit<L
     // Basic validation of the first entry to confirm format
     const firstEntry = entriesData[0];
     const isWorldInfo = firstEntry && typeof firstEntry === 'object' && 
-                        (Array.isArray(firstEntry.key) || Array.isArray(firstEntry.keys)) && 
+                        (Array.isArray(firstEntry.key) || Array.isArray(firstEntry.keys) || typeof firstEntry.key === 'string') && 
                         typeof firstEntry.content === 'string';
     
     if (!isWorldInfo) {
@@ -254,12 +312,19 @@ export const sillyTavernWorldInfoToNexus = (data: any, fileName: string): Omit<L
     logger.log(`Detected SillyTavern/Agnaistic World Info format from file: ${fileName}`);
 
     const entries: LorebookEntry[] = entriesData
-        .filter(entry => entry && (Array.isArray(entry.key) || Array.isArray(entry.keys)) && typeof entry.content === 'string' && entry.enabled !== false)
-        .map(entry => ({
-            id: crypto.randomUUID(),
-            keys: (entry.keys || entry.key).map((k: string) => k.trim()).filter((k: string) => k),
-            content: entry.content
-        }));
+        .filter(entry => entry && entry.content && entry.content.trim() !== '')
+        .map(entry => {
+            let keys: string[] = [];
+            if (Array.isArray(entry.keys)) keys = entry.keys;
+            else if (Array.isArray(entry.key)) keys = entry.key;
+            else if (typeof entry.key === 'string') keys = entry.key.split(',').map((s: string) => s.trim());
+            
+            return {
+                id: crypto.randomUUID(),
+                keys: keys.map((k: string) => k.trim()).filter((k: string) => k),
+                content: entry.content
+            };
+        });
     
     const lorebookName = data.name || fileName.replace(/\.[^/.]+$/, "");
 

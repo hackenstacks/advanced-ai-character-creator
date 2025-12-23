@@ -282,27 +282,13 @@ export const MainLayout: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
-        // If it's an image, redirect the user to the Library or relevant section
-        if (file.type.startsWith('image/')) {
-            alert("This is an image file. To add character avatars or reference images, please use the 'Knowledge Library' panel or Character Edit form.");
-            if (fileInputRef.current) fileInputRef.current.value = "";
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = async (e) => {
+        const processJsonData = (jsonString: string) => {
             try {
-                const text = e.target?.result as string;
-                let imported: any;
-                try {
-                    imported = JSON.parse(text);
-                } catch (parseErr) {
-                    throw new Error("The file is not a valid JSON. If this is an image, please upload it via the Knowledge Library.");
-                }
+                let imported = JSON.parse(jsonString);
                 
                 // 1. Check if it's a full backup
                 if (imported.characters && imported.chatSessions) {
@@ -351,11 +337,29 @@ export const MainLayout: React.FC = () => {
 
                 alert("Unknown file format. Please ensure it's a valid character card or backup JSON.");
             } catch (err) {
-                logger.error("Import failed", err);
+                logger.error("Import failed during JSON processing", err);
                 alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
-            } finally {
-                if (fileInputRef.current) fileInputRef.current.value = "";
             }
+        };
+
+        // If it's a PNG, it might be a character card
+        if (file.type === 'image/png') {
+            const charData = await compatibilityService.extractCharaFromPng(file);
+            if (charData) {
+                processJsonData(charData);
+            } else {
+                alert("This PNG does not contain character metadata. To add avatars, please use the 'Knowledge Library' or Character Edit form.");
+            }
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
+
+        // Otherwise assume it's a JSON text file
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const text = e.target?.result as string;
+            processJsonData(text);
+            if (fileInputRef.current) fileInputRef.current.value = "";
         };
         reader.readAsText(file);
     };
