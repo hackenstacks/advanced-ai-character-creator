@@ -1,6 +1,5 @@
-
-import { logger } from './loggingService';
-import { generateSpeech } from './geminiService';
+import { logger } from './loggingService.ts';
+import { generateSpeech } from './geminiService.ts';
 
 // Audio Context for Web Audio API
 let audioContext: AudioContext | null = null;
@@ -32,7 +31,7 @@ export const getVoices = (): Promise<SpeechSynthesisVoice[]> => {
 };
 
 export const isSupported = (): boolean => {
-    return true; // We assume Web Audio API is supported in modern browsers
+    return true; 
 };
 
 // Helper to decode PCM data
@@ -83,7 +82,7 @@ const processQueue = async () => {
         } catch (error) {
             logger.error("TTS Playback Error:", error);
             isPlaying = false;
-            processQueue(); // Try next
+            processQueue(); 
         }
     } else {
         isPlaying = false;

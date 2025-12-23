@@ -1,4 +1,4 @@
-import { logger } from './loggingService';
+import { logger } from './loggingService.ts';
 
 const SIGN_ALGORITHM = {
   name: 'ECDSA',
@@ -109,10 +109,6 @@ export const verify = async (data: string, signature: string, publicKey: CryptoK
 
 /**
  * Creates a "canonical" string representation of an object for consistent signing.
- * This is crucial because `JSON.stringify` does not guarantee key order.
- * This simple version sorts keys at the top level. For fully nested objects, a more
- * robust recursive implementation would be needed. This is sufficient for our current
- * data structures.
  */
 export const createCanonicalString = (obj: Record<string, any>): string => {
     return Object.keys(obj).sort().map(key => {

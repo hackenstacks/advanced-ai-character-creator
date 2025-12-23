@@ -1,7 +1,7 @@
-import { Character, RagSource, VectorChunk, EmbeddingConfig } from '../types';
-import { logger } from './loggingService';
-import * as embeddingService from './embeddingService';
-import * as db from './secureStorage';
+import { Character, RagSource, VectorChunk, EmbeddingConfig } from '../types.ts';
+import { logger } from './loggingService.ts';
+import * as embeddingService from './embeddingService.ts';
+import * as db from './secureStorage.ts';
 
 // --- Text Processing ---
 
@@ -13,7 +13,7 @@ const chunkText = (text: string, chunkSize = 1000, overlap = 200): string[] => {
         chunks.push(text.slice(i, end));
         i += chunkSize - overlap;
         if (i + overlap >= text.length) {
-             i = text.length; // exit condition
+             i = text.length; 
         }
     }
     return chunks;
@@ -83,14 +83,12 @@ export const processAndIndexFile = async (
             const embedding = await embeddingService.generateEmbedding(chunk, embeddingConfig);
             vectorChunks.push({
                 id: `chunk-${crypto.randomUUID()}`,
-                // characterId removed as chunks are now source-centric
                 sourceId: newSource.id,
                 content: chunk,
                 embedding: embedding,
             });
         } catch (error) {
             logger.error(`Failed to generate embedding for chunk ${i+1}`, error);
-            // Decide if we should stop or continue. For now, we stop on error.
             throw new Error(`Failed to process chunk ${i+1}. Check embedding API settings.`);
         }
     }
@@ -117,7 +115,6 @@ export const findRelevantContext = async (
         return null;
     }
     
-    // Logic for shared knowledge base: fetch chunks by source ID
     const sourceIds = character.knowledgeSourceIds || [];
     if (sourceIds.length === 0) {
         return null;
@@ -152,7 +149,6 @@ export const findRelevantContext = async (
 
     } catch (error) {
         logger.error("Error finding relevant context:", error);
-        // Re-throw so the UI can catch it and inform the user
         throw error;
     }
 };

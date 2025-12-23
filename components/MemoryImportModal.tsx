@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChatSession } from '../types';
+import { ChatSession } from '../types.ts';
 
 interface MemoryImportModalProps {
   allSessions: ChatSession[];

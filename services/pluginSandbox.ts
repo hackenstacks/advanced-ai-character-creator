@@ -1,14 +1,11 @@
-import { GeminiApiRequest, PluginApiResponse } from "../types";
-import { logger } from "./loggingService";
+import { GeminiApiRequest, PluginApiResponse } from "../types.ts";
+import { logger } from "./loggingService.ts";
 
-// This string contains the code that will be executed inside the Web Worker.
-// It creates a sandboxed environment for the plugin code.
 const workerCode = `
   let userHooks = {};
   let apiTicketCounter = 0;
   const pendingApiRequests = new Map();
 
-  // The 'nexus' object is the only global API available to the plugin code.
   const nexus = {
     log: (...args) => {
       self.postMessage({ type: 'LOG', payload: args });
@@ -17,17 +14,9 @@ const workerCode = `
       register: (hookName, callback) => {
         if (typeof callback === 'function') {
           userHooks[hookName] = callback;
-        } else {
-          console.error('Invalid callback provided for hook:', hookName);
         }
       },
     },
-    // Compatibility Shim for legacy character scripts
-    beforeResponseGenerate: (payload) => {
-        console.warn('Deprecated: nexus.beforeResponseGenerate() called. Use nexus.hooks.register("beforeResponseGenerate", ...) instead.');
-        return payload;
-    },
-    // Provides a secure bridge to the main application's Gemini API services.
     gemini: {
       generateContent: (prompt) => {
         return new Promise((resolve, reject) => {
@@ -48,7 +37,6 @@ const workerCode = `
 
   self.onmessage = async (e) => {
     const { type, payload } = e.data;
-
     switch (type) {
       case 'LOAD_CODE':
         try {
@@ -59,31 +47,24 @@ const workerCode = `
           self.postMessage({ type: 'LOAD_ERROR', error: error.message });
         }
         break;
-
       case 'EXECUTE_HOOK':
         const hook = userHooks[payload.hookName];
         if (hook) {
           try {
-            // Hooks can now be async and use the nexus.gemini API
             const result = await hook(payload.data);
             self.postMessage({ type: 'HOOK_RESULT', ticket: payload.ticket, result: result });
           } catch (error) {
             self.postMessage({ type: 'HOOK_ERROR', ticket: payload.ticket, error: error.message });
           }
         } else {
-          // If no hook is registered, return original data (passthrough)
           self.postMessage({ type: 'HOOK_RESULT', ticket: payload.ticket, result: payload.data });
         }
         break;
-        
       case 'API_RESPONSE':
         const promise = pendingApiRequests.get(payload.ticket);
         if (promise) {
-          if (payload.error) {
-            promise.reject(new Error(payload.error));
-          } else {
-            promise.resolve(payload.result);
-          }
+          if (payload.error) promise.reject(new Error(payload.error));
+          else promise.resolve(payload.result);
           pendingApiRequests.delete(payload.ticket);
         }
         break;
@@ -91,9 +72,6 @@ const workerCode = `
   };
 `;
 
-/**
- * Manages a secure Web Worker sandbox for running a single plugin's code.
- */
 export class PluginSandbox {
   private worker: Worker;
   private ticketCounter = 0;
@@ -104,32 +82,21 @@ export class PluginSandbox {
     this.apiRequestHandler = apiRequestHandler;
     const blob = new Blob([workerCode], { type: 'application/javascript' });
     this.worker = new Worker(URL.createObjectURL(blob));
-
     this.worker.onmessage = async (e) => {
       const { type, payload, ticket, result, error } = e.data;
-
       if (type === 'LOG') {
-        const message = payload.map((p: any) => typeof p === 'object' ? JSON.stringify(p) : p).join(' ');
-        logger.log(`[Plugin] ${message}`);
+        logger.log(`[Plugin] ${payload.join(' ')}`);
       } else if (type === 'API_REQUEST') {
         try {
           const apiResult = await this.apiRequestHandler(payload.apiRequest);
-          const response: PluginApiResponse = { ticket: payload.ticket, result: apiResult };
-          this.worker.postMessage({ type: 'API_RESPONSE', payload: response });
+          this.worker.postMessage({ type: 'API_RESPONSE', payload: { ticket: payload.ticket, result: apiResult } });
         } catch (apiError) {
-          const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
-          logger.error(`Error handling API request from plugin`, apiError);
-          const response: PluginApiResponse = { ticket: payload.ticket, error: errorMessage };
-          this.worker.postMessage({ type: 'API_RESPONSE', payload: response });
+          this.worker.postMessage({ type: 'API_RESPONSE', payload: { ticket: payload.ticket, error: String(apiError) } });
         }
       } else if (ticket !== undefined && this.pendingHooks.has(ticket)) {
         const promise = this.pendingHooks.get(ticket)!;
-        if (type === 'HOOK_RESULT') {
-          promise.resolve(result);
-        } else if (type === 'HOOK_ERROR') {
-          logger.error(`[Plugin] Error executing hook:`, error);
-          promise.reject(new Error(error));
-        }
+        if (type === 'HOOK_RESULT') promise.resolve(result);
+        else promise.reject(new Error(error));
         this.pendingHooks.delete(ticket);
       }
     };
@@ -137,16 +104,16 @@ export class PluginSandbox {
 
   loadCode(code: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const loadListener = (e: MessageEvent) => {
+      const listener = (e: MessageEvent) => {
         if (e.data.type === 'LOAD_SUCCESS') {
-          this.worker.removeEventListener('message', loadListener);
+          this.worker.removeEventListener('message', listener);
           resolve();
         } else if (e.data.type === 'LOAD_ERROR') {
-          this.worker.removeEventListener('message', loadListener);
+          this.worker.removeEventListener('message', listener);
           reject(new Error(e.data.error));
         }
       };
-      this.worker.addEventListener('message', loadListener);
+      this.worker.addEventListener('message', listener);
       this.worker.postMessage({ type: 'LOAD_CODE', payload: { code } });
     });
   }
@@ -155,14 +122,9 @@ export class PluginSandbox {
     return new Promise((resolve, reject) => {
       const ticket = this.ticketCounter++;
       this.pendingHooks.set(ticket, { resolve, reject });
-      this.worker.postMessage({
-        type: 'EXECUTE_HOOK',
-        payload: { hookName, data, ticket },
-      });
+      this.worker.postMessage({ type: 'EXECUTE_HOOK', payload: { hookName, data, ticket } });
     });
   }
 
-  terminate() {
-    this.worker.terminate();
-  }
+  terminate() { this.worker.terminate(); }
 }

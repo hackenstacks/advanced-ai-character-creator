@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { SpinnerIcon } from './icons/SpinnerIcon';
-import { ImageIcon } from './icons/ImageIcon';
+import { SpinnerIcon } from './icons/SpinnerIcon.tsx';
+import { ImageIcon } from './icons/ImageIcon.tsx';
 
 interface ImageGenerationWindowProps {
   onGenerate: (prompt: string) => Promise<{ url?: string; error?: string }>;

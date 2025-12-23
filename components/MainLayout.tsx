@@ -270,6 +270,130 @@ export const MainLayout: React.FC = () => {
         await persistData(updatedData);
     }, [appData, persistData, selectedChatId]);
 
+    const triggerDownload = (filename: string, content: string) => {
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // If it's an image, redirect the user to the Library or relevant section
+        if (file.type.startsWith('image/')) {
+            alert("This is an image file. To add character avatars or reference images, please use the 'Knowledge Library' panel or Character Edit form.");
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const text = e.target?.result as string;
+                let imported: any;
+                try {
+                    imported = JSON.parse(text);
+                } catch (parseErr) {
+                    throw new Error("The file is not a valid JSON. If this is an image, please upload it via the Knowledge Library.");
+                }
+                
+                // 1. Check if it's a full backup
+                if (imported.characters && imported.chatSessions) {
+                    setConfirmationRequest({
+                        message: "Importing a full backup will overwrite ALL your current data. Are you sure?",
+                        onConfirm: async () => {
+                            setAppData(imported);
+                            await persistData(imported);
+                            setConfirmationRequest(null);
+                            alert("Backup imported successfully.");
+                        },
+                        onCancel: () => setConfirmationRequest(null)
+                    });
+                    return;
+                }
+
+                // 2. Check for Lorebook
+                const lorebook = compatibilityService.sillyTavernWorldInfoToNexus(imported, file.name);
+                if (lorebook) {
+                    const newLorebook = { ...lorebook, id: crypto.randomUUID() } as Lorebook;
+                    setAppData(prev => {
+                        const updated = { ...prev, lorebooks: [...(prev.lorebooks || []), newLorebook] };
+                        persistData(updated);
+                        return updated;
+                    });
+                    alert(`Lorebook "${newLorebook.name}" imported.`);
+                    return;
+                }
+
+                // 3. Check for Character Card
+                const charResult = compatibilityService.v2ToNexus(imported);
+                if (charResult) {
+                    const { character, lorebook: charLore } = charResult;
+                    setAppData(prev => {
+                        const updated = { 
+                            ...prev, 
+                            characters: [...prev.characters, character],
+                            lorebooks: charLore ? [...(prev.lorebooks || []), charLore] : prev.lorebooks
+                        };
+                        persistData(updated);
+                        return updated;
+                    });
+                    alert(`Character "${character.name}" imported.`);
+                    return;
+                }
+
+                alert("Unknown file format. Please ensure it's a valid character card or backup JSON.");
+            } catch (err) {
+                logger.error("Import failed", err);
+                alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+            } finally {
+                if (fileInputRef.current) fileInputRef.current.value = "";
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleExportBackup = () => {
+        const json = JSON.stringify(appData, null, 2);
+        triggerDownload(`ai-nexus-backup-${new Date().toISOString().split('T')[0]}.json`, json);
+    };
+
+    const handleExportCharacter = async (id: string) => {
+        const char = appData.characters.find(c => c.id === id);
+        if (!char) return;
+        const v2Card = await compatibilityService.nexusToV2(char);
+        triggerDownload(`${char.name.toLowerCase().replace(/\s/g, '_')}_card.json`, JSON.stringify(v2Card, null, 2));
+    };
+
+    const handleExportChat = (id: string) => {
+        const chat = appData.chatSessions.find(s => s.id === id);
+        if (!chat) return;
+        triggerDownload(`${chat.name.toLowerCase().replace(/\s/g, '_')}_history.json`, JSON.stringify(chat, null, 2));
+    };
+
+    const handleArchiveChat = (id: string) => {
+        setAppData(prev => {
+            const updated = { ...prev, chatSessions: prev.chatSessions.map(s => s.id === id ? { ...s, isArchived: true } : s) };
+            persistData(updated);
+            return updated;
+        });
+    };
+
+    const handleArchiveCharacter = (id: string) => {
+        setAppData(prev => {
+            const updated = { ...prev, characters: prev.characters.map(c => c.id === id ? { ...c, isArchived: true } : c) };
+            persistData(updated);
+            return updated;
+        });
+    };
+
     const selectedChat = appData.chatSessions.find(s => s.id === selectedChatId);
 
     return (
@@ -289,20 +413,44 @@ export const MainLayout: React.FC = () => {
                     <button onClick={() => { handlePanelToggle('library'); setActiveView('library'); }} title="Library" className={`p-2 rounded-lg ${activePanel === 'library' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><FolderIcon className="w-6 h-6"/></button>
                     <button onClick={() => { setActiveView('plugins'); setActivePanel('none'); }} title="Plugins" className={`p-2 rounded-lg ${activeView === 'plugins' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><CodeIcon className="w-6 h-6"/></button>
                     <div className="w-8 border-t border-border-neutral my-2"></div>
+                    <button onClick={() => setIsChatModalVisible(true)} className="p-2 rounded-lg text-primary-500 hover:bg-background-tertiary" title="Create New Chat"><PlusIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsAppearanceModalVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><PaletteIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsLogViewerVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><TerminalIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsHelpVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><HelpIcon className="w-6 h-6"/></button>
                 </div>
-                <ThemeSwitcher />
+                <div className="flex flex-col items-center space-y-2">
+                    <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" />
+                    <button onClick={() => fileInputRef.current?.click()} title="Import File" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><UploadIcon className="w-6 h-6"/></button>
+                    <button onClick={handleExportBackup} title="Export Full Backup" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><DownloadIcon className="w-6 h-6"/></button>
+                    <ThemeSwitcher />
+                </div>
             </div>
 
             <aside className={`relative flex-shrink-0 transition-all duration-300 bg-background-secondary/80 border-r border-border-neutral flex flex-col overflow-hidden ${activePanel !== 'none' ? 'w-80 p-4' : 'w-0 p-0 border-r-0'}`}>
-                {activePanel === 'chats' && <ChatList chatSessions={appData.chatSessions.filter(c => !c.isArchived)} characters={appData.characters} selectedChatId={selectedChatId} onSelectChat={(id) => { setSelectedChatId(id); setActiveView('chat'); }} onDeleteChat={() => {}} onExportChat={() => {}} showArchived={false} onToggleArchiveView={() => {}} onRestoreChat={() => {}} onPermanentlyDeleteChat={() => {}}/>}
-                {activePanel === 'characters' && <CharacterList characters={appData.characters.filter(c => !c.isArchived)} onDeleteCharacter={() => {}} onEditCharacter={(c) => { setEditingCharacter(c); setActiveView('character-form'); }} onAddNew={() => { setEditingCharacter(null); setActiveView('character-form'); }} onExportCharacter={() => {}} showArchived={false} onToggleArchiveView={() => {}} onRestoreCharacter={() => {}} onPermanentlyDeleteCharacter={() => {}}/>}
+                {activePanel === 'chats' && (
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <button onClick={() => setIsChatModalVisible(true)} className="w-full flex items-center justify-center space-x-2 mb-4 py-2 px-4 rounded-lg bg-primary-600 text-text-accent font-bold hover:bg-primary-500 shadow-md transition-all">
+                            <PlusIcon className="w-5 h-5" /> <span>Start New Chat</span>
+                        </button>
+                        <ChatList chatSessions={appData.chatSessions.filter(c => !!c.isArchived === showArchivedChats)} characters={appData.characters} selectedChatId={selectedChatId} onSelectChat={(id) => { setSelectedChatId(id); setActiveView('chat'); }} onDeleteChat={handleArchiveChat} onExportChat={handleExportChat} showArchived={showArchivedChats} onToggleArchiveView={() => setShowArchivedChats(!showArchivedChats)} onRestoreChat={(id) => handleSessionUpdate({ ...appData.chatSessions.find(s => s.id === id)!, isArchived: false })} onPermanentlyDeleteChat={(id) => setAppData(prev => ({ ...prev, chatSessions: prev.chatSessions.filter(s => s.id !== id) }))}/>
+                    </div>
+                )}
+                {activePanel === 'characters' && <CharacterList characters={appData.characters.filter(c => !!c.isArchived === showArchivedCharacters)} onDeleteCharacter={handleArchiveCharacter} onEditCharacter={(c) => { setEditingCharacter(c); setActiveView('character-form'); }} onAddNew={() => { setEditingCharacter(null); setActiveView('character-form'); }} onExportCharacter={handleExportCharacter} showArchived={showArchivedCharacters} onToggleArchiveView={() => setShowArchivedCharacters(!showArchivedCharacters)} onRestoreCharacter={(id) => handleCharacterUpdate({ ...appData.characters.find(c => c.id === id)!, isArchived: false })} onPermanentlyDeleteCharacter={(id) => setAppData(prev => ({ ...prev, characters: prev.characters.filter(c => c.id !== id) }))}/>}
+                {activePanel === 'lorebooks' && <LorebookManager lorebooks={appData.lorebooks || []} onLorebooksUpdate={(lb) => setAppData(prev => ({ ...prev, lorebooks: lb }))} onSetConfirmation={setConfirmationRequest}/>}
             </aside>
             
             <main className="relative flex-1 flex flex-col h-full overflow-hidden">
-                {activeView === 'chat' && selectedChat && <ChatInterface session={selectedChat} allCharacters={appData.characters} allChatSessions={appData.chatSessions} allLorebooks={appData.lorebooks || []} userKeys={appData.userKeys} fileSystem={fileSystemState} onUpdateFileSystem={updateFileSystem} onSessionUpdate={handleSessionUpdate} onTriggerHook={triggerPluginHook} onCharacterUpdate={handleCharacterUpdate} onMemoryImport={() => {}} onSaveBackup={() => {}} handlePluginApiRequest={handlePluginApiRequest}/>}
+                {activeView === 'chat' && (
+                    selectedChat ? <ChatInterface session={selectedChat} allCharacters={appData.characters} allChatSessions={appData.chatSessions} allLorebooks={appData.lorebooks || []} userKeys={appData.userKeys} fileSystem={fileSystemState} onUpdateFileSystem={updateFileSystem} onSessionUpdate={handleSessionUpdate} onTriggerHook={triggerPluginHook} onCharacterUpdate={handleCharacterUpdate} onMemoryImport={() => {}} onSaveBackup={handleExportBackup} handlePluginApiRequest={handlePluginApiRequest}/>
+                    : <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                        <ChatBubbleIcon className="w-20 h-20 text-text-secondary opacity-20" />
+                        <h3 className="text-2xl font-bold text-text-primary">No Chat Selected</h3>
+                        <p className="text-text-secondary max-w-md">Start a new conversation or select an existing one from the sidebar to begin.</p>
+                        <button onClick={() => setIsChatModalVisible(true)} className="flex items-center space-x-2 py-3 px-6 rounded-lg text-text-accent bg-primary-600 hover:bg-primary-500 font-bold shadow-lg transition-transform hover:scale-105">
+                            <PlusIcon className="w-6 h-6" /> <span>Create New Chat</span>
+                        </button>
+                      </div>
+                )}
                 {activeView === 'character-form' && <CharacterForm character={editingCharacter} onSave={handleSaveCharacter} onCancel={() => setActiveView('chat')} onGenerateImage={geminiService.generateImageFromPrompt} availableDocuments={appData.knowledgeBase || []}/>}
                 {activeView === 'plugins' && <PluginManager plugins={appData.plugins || []} onPluginsUpdate={(p) => { setAppData(prev => ({ ...prev, plugins: p })); persistData({ ...appData, plugins: p }); }} onSetConfirmation={setConfirmationRequest}/>}
                 {activeView === 'library' && <DocumentLibrary documents={appData.knowledgeBase || []} onUpdateDocuments={(d) => { setAppData(prev => ({ ...prev, knowledgeBase: d })); persistData({ ...appData, knowledgeBase: d }); }} onSetConfirmation={setConfirmationRequest}/>}

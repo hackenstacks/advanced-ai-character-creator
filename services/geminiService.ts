@@ -603,7 +603,7 @@ const normalizeGeminiHistory = (history: Message[]) => {
             const curr = mapped[i];
             if (prev.role === curr.role) {
                 prev.parts = [...prev.parts, ...curr.parts];
-            } else {
+            } else if (curr.parts.length > 0) {
                 merged.push(curr);
             }
         }
@@ -666,11 +666,14 @@ const streamGeminiChatResponse = async (
             return;
         }
 
-        let modelName = 'gemini-2.5-flash';
+        // Use the model specified in the character config, or default to flash
+        let modelName = character.apiConfig?.model || 'gemini-3-flash-preview';
+
         let config: any = { systemInstruction: systemInstruction };
 
         if (character.thinkingEnabled) {
-            modelName = 'gemini-3-pro-preview';
+            // For thinking, we usually need the Pro model
+            modelName = character.apiConfig?.model?.includes('pro') ? character.apiConfig.model : 'gemini-3-pro-preview';
             config.thinkingConfig = { thinkingBudget: 32768 }; 
         } 
         
@@ -819,7 +822,7 @@ export const generateContent = async (prompt: string, apiKey?: string): Promise<
   try {
     const ai = getAiClient(apiKey);
     const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
     }));
     return response.text || "";
@@ -838,7 +841,7 @@ export const streamGenericResponse = async (
     try {
         const ai = getAiClient(apiKey);
         const responseStream = await withRetry(() => ai.models.generateContentStream({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: { systemInstruction: systemInstruction }
         })) as AsyncIterable<GenerateContentResponse>;

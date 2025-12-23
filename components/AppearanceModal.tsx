@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UISettings, ChatSession, Character } from '../types';
-import { generateContent } from '../services/geminiService';
-import { logger } from '../services/loggingService';
+import { UISettings, ChatSession, Character } from '../types.ts';
+import { generateContent } from '../services/geminiService.ts';
+import { logger } from '../services/loggingService.ts';
 import { SpinnerIcon } from './icons/SpinnerIcon.tsx';
 import { UploadIcon } from './icons/UploadIcon.tsx';
 import { SparklesIcon } from './icons/SparklesIcon.tsx';

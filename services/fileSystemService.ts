@@ -1,5 +1,4 @@
-
-import { FileSystemState, FileSystemNode } from "../types";
+import { FileSystemState, FileSystemNode } from "../types.ts";
 
 // Default FS Structure
 export const createDefaultFileSystem = (): FileSystemState => {
@@ -38,14 +37,11 @@ export const createDefaultFileSystem = (): FileSystemState => {
 const getNodeByPath = (root: FileSystemNode, pathStr: string, currentPath: string): FileSystemNode | null => {
     if (pathStr === "/") return root;
     
-    // Normalize path
     let targetPath = pathStr;
     if (!targetPath.startsWith("/")) {
-        // Relative path
         targetPath = currentPath === "/" ? `/${pathStr}` : `${currentPath}/${pathStr}`;
     }
     
-    // Handle .. and .
     const parts = targetPath.split("/").filter(p => p !== "" && p !== ".");
     const resolvedParts: string[] = [];
     
@@ -72,7 +68,7 @@ export const executeCommand = (state: FileSystemState, commandLine: string): { o
     const cmd = args[0];
     const params = args.slice(1);
     
-    let newState = JSON.parse(JSON.stringify(state)); // Deep copy for immutability
+    let newState = JSON.parse(JSON.stringify(state)); 
     let output = "";
 
     const getCurrentDir = () => getNodeByPath(newState.root, newState.currentPath, newState.currentPath);
@@ -107,9 +103,7 @@ export const executeCommand = (state: FileSystemState, commandLine: string): { o
                 } else if (node.type !== "dir") {
                     output = `cd: ${dest}: Not a directory`;
                 } else {
-                    // Resolve absolute path string
                     let newPath = dest.startsWith('/') ? dest : (newState.currentPath === '/' ? `/${dest}` : `${newState.currentPath}/${dest}`);
-                    // Normalize (simple)
                     const parts = newPath.split('/').filter(p => p !== '' && p !== '.');
                     const stack: string[] = [];
                     for(const p of parts) {
@@ -133,7 +127,6 @@ export const executeCommand = (state: FileSystemState, commandLine: string): { o
             break;
 
         case "echo":
-            // Handle simple echo "text" > file
             const redirectIndex = params.indexOf(">");
             if (redirectIndex !== -1) {
                 const text = params.slice(0, redirectIndex).join(" ").replace(/^"|"$/g, '');
@@ -141,7 +134,6 @@ export const executeCommand = (state: FileSystemState, commandLine: string): { o
                 if (!fileName) {
                     output = "bash: syntax error near unexpected token `newline'";
                 } else {
-                    // Write to file
                     let targetPath = fileName.startsWith('/') ? fileName : (newState.currentPath === '/' ? `/${fileName}` : `${newState.currentPath}/${fileName}`);
                     const pathParts = targetPath.split('/');
                     const file = pathParts.pop()!;
@@ -194,7 +186,6 @@ export const executeCommand = (state: FileSystemState, commandLine: string): { o
             if (params.length === 0) {
                 output = "rm: missing operand";
             } else {
-                // Ignore flags like -rf for simplicity in simulation
                 const targetName = params.filter(p => !p.startsWith('-'))[0];
                 if (!targetName) {
                      output = "rm: missing operand";

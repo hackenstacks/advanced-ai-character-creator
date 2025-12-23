@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { TerminalIcon } from './icons/TerminalIcon';
-import { FileSystemState } from '../types';
-import { executeCommand } from '../services/fileSystemService';
+import { TerminalIcon } from './icons/TerminalIcon.tsx';
+import { FileSystemState } from '../types.ts';
+import { executeCommand } from '../services/fileSystemService.ts';
 
 interface TerminalWindowProps {
   fileSystem: FileSystemState;
