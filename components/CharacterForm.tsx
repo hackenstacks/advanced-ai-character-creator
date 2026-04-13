@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Character, ApiConfig, EmbeddingConfig, RagSource } from '../types.ts';
 import * as geminiService from '../services/geminiService.ts';
@@ -103,7 +102,13 @@ const Section: React.FC<{ title: string, children: React.ReactNode, defaultOpen?
 }
 
 export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave, onCancel, onGenerateImage, availableDocuments }) => {
-  const [formState, setFormState] = useState<Character>({} as Character);
+  const [formState, setFormState] = useState<Character>({
+      id: '', name: '', description: '', personality: '', avatarUrl: '', tags: [], createdAt: '', 
+      physicalAppearance: '', personalityTraits: '', lore: [], memory: 'No memories yet.', voiceId: 'Puck',
+      characterType: 'character', apiConfig: defaultApiConfig, ragEnabled: false, embeddingConfig: defaultEmbeddingConfig,
+      knowledgeSourceIds: [], pluginEnabled: false, pluginCode: '', searchEnabled: false, thinkingEnabled: false,
+      terminalEnabled: false, dynamicAvatarEnabled: false,
+  });
   const [isAiLoading, setIsAiLoading] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<string>('pollinations');
 
@@ -112,30 +117,14 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
         setFormState({
             ...character,
             tags: character.tags || [],
-            lore: character.lore || [],
+            lore: Array.isArray(character.lore) ? character.lore : [],
             memory: character.memory || 'No memories yet.',
-            characterType: character.characterType || 'character',
             knowledgeSourceIds: character.knowledgeSourceIds || [],
             embeddingConfig: character.embeddingConfig || defaultEmbeddingConfig,
             apiConfig: character.apiConfig || defaultApiConfig,
-            pluginEnabled: character.pluginEnabled || false,
-            pluginCode: character.pluginCode || '',
-            voiceId: character.voiceId || 'Puck',
-            searchEnabled: character.searchEnabled || false,
-            thinkingEnabled: character.thinkingEnabled || false,
-            terminalEnabled: character.terminalEnabled || false,
-            dynamicAvatarEnabled: character.dynamicAvatarEnabled || false,
         });
         const service = character.apiConfig?.service || 'pollinations';
         setSelectedPreset(service);
-    } else {
-        setFormState({
-            id: '', name: '', description: '', personality: '', avatarUrl: '', tags: [], createdAt: '', 
-            physicalAppearance: '', personalityTraits: '', lore: [], memory: 'No memories yet.', voiceId: 'Puck',
-            characterType: 'character', apiConfig: defaultApiConfig, ragEnabled: false, embeddingConfig: defaultEmbeddingConfig,
-            knowledgeSourceIds: [], pluginEnabled: false, pluginCode: '', searchEnabled: false, thinkingEnabled: false,
-            terminalEnabled: false, dynamicAvatarEnabled: false,
-        });
     }
   }, [character]);
 
@@ -147,9 +136,18 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
     if (isAiLoading) return;
     setIsAiLoading(String(field));
     try {
-        const prompt = `Based on the current context of this character creation (Name: ${formState.name || 'New Character'}, Description: ${formState.description || 'N/A'}), generate a high-quality ${String(field)} content. Keep it within character and immersive. Return ONLY the content for that field without extra formatting.`;
+        const prompt = `Based on context (Name: ${formState.name || 'New Character'}, Description: ${formState.description || 'N/A'}), generate a high-quality ${String(field)} content. Return ONLY the content without extra formatting. If list, use separate lines.`;
         const result = await geminiService.generateContent(prompt);
-        if (result) handleFormChange(field, result as any);
+        if (result) {
+            if (field === 'lore') {
+                const lines = result.split('\n')
+                    .map(l => l.replace(/^[-*•\d.]+\s*/, '').trim())
+                    .filter(l => l.length > 0);
+                handleFormChange('lore', lines);
+            } else {
+                handleFormChange(field, result as any);
+            }
+        }
     } catch (e) {
         logger.error("AI Assist failed", e);
     } finally {
@@ -158,28 +156,20 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
   };
 
   const handleLoreAdd = () => {
-    const currentLore = (formState.lore || []) as string[];
+    const currentLore = Array.isArray(formState.lore) ? formState.lore : [];
     handleFormChange('lore', [...currentLore, '']);
   };
 
   const handleLoreChange = (idx: number, val: string) => {
-    const currentLore = (formState.lore || []) as string[];
+    const currentLore = Array.isArray(formState.lore) ? formState.lore : [];
     const updated = [...currentLore];
     updated[idx] = val;
     handleFormChange('lore', updated);
   };
 
   const handleLoreDelete = (idx: number) => {
-    const currentLore = (formState.lore || []) as string[];
+    const currentLore = Array.isArray(formState.lore) ? formState.lore : [];
     handleFormChange('lore', currentLore.filter((_, i) => i !== idx));
-  };
-
-  // FIX: Explicitly type the Set as Set<string> to prevent unknown[] inference error when calling Array.from(current).
-  const handleToggleKnowledge = (id: string) => {
-    const current = new Set<string>(formState.knowledgeSourceIds || []);
-    if (current.has(id)) current.delete(id);
-    else current.add(id);
-    handleFormChange('knowledgeSourceIds', Array.from(current));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -220,58 +210,19 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                       </div>
                     </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-primary">Short Description</label>
-                  <div className="mt-1 flex space-x-2">
-                    <textarea value={formState.description} onChange={(e) => handleFormChange('description', e.target.value)} rows={2} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('description')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors" title="AI Assist Description">
-                        {isAiLoading === 'description' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
-                    </button>
-                  </div>
-                </div>
-            </Section>
-
-            <Section title="Persona & Details">
-                 <div>
-                  <label className="block text-sm font-medium text-text-primary">Physical Appearance</label>
-                  <div className="mt-1 flex space-x-2">
-                    <textarea value={formState.physicalAppearance} onChange={(e) => handleFormChange('physicalAppearance', e.target.value)} rows={3} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('physicalAppearance')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
-                        {isAiLoading === 'physicalAppearance' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-primary">Personality Traits</label>
-                  <div className="mt-1 flex space-x-2">
-                    <textarea value={formState.personalityTraits} onChange={(e) => handleFormChange('personalityTraits', e.target.value)} rows={2} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary"/>
-                    <button type="button" onClick={() => handleAiAssist('personalityTraits')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
-                        {isAiLoading === 'personalityTraits' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-text-primary">Roleplay Instructions (System Prompt)</label>
-                  <div className="mt-1 flex space-x-2">
-                    <textarea value={formState.personality} onChange={(e) => handleFormChange('personality', e.target.value)} rows={6} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary font-mono text-sm"/>
-                    <button type="button" onClick={() => handleAiAssist('personality')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
-                        {isAiLoading === 'personality' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
-                    </button>
-                  </div>
-                </div>
             </Section>
 
             <Section title="Lore & Key Facts">
                 <div className="space-y-2">
-                    {(formState.lore || []).map((fact, i) => (
+                    {(Array.isArray(formState.lore) ? formState.lore : []).map((fact, i) => (
                         <div key={i} className="flex space-x-2 animate-in fade-in zoom-in-95">
                             <input type="text" value={fact} onChange={(e) => handleLoreChange(i, e.target.value)} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-1 px-2 text-sm" placeholder="A fact about this character..."/>
-                            <button type="button" onClick={handleLoreDelete} className="text-accent-red p-1 hover:bg-accent-red/10 rounded"><TrashIcon className="w-4 h-4"/></button>
+                            <button type="button" onClick={() => handleLoreDelete(i)} className="text-accent-red p-1 hover:bg-accent-red/10 rounded"><TrashIcon className="w-4 h-4"/></button>
                         </div>
                     ))}
                     <div className="flex space-x-2">
                         <button type="button" onClick={handleLoreAdd} className="flex items-center space-x-2 text-primary-500 text-sm font-bold p-2 hover:bg-primary-500/10 rounded-md transition-colors">
-                            <PlusIcon className="w-4 h-4"/> <span>Add Lore Entry</span>
+                            <PlusIcon className="w-4 h-4"/> <span>Add Entry</span>
                         </button>
                         <button type="button" onClick={() => handleAiAssist('lore')} className="flex items-center space-x-2 text-text-secondary text-sm font-bold p-2 hover:bg-background-tertiary rounded-md transition-colors">
                              {isAiLoading === 'lore' ? <SpinnerIcon className="w-4 h-4 animate-spin"/> : <SparklesIcon className="w-4 h-4"/>} <span>AI Help Lore</span>
@@ -280,94 +231,15 @@ export const CharacterForm: React.FC<CharacterFormProps> = ({ character, onSave,
                 </div>
             </Section>
 
-            <Section title="Knowledge Base (RAG)">
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-background-tertiary/20 rounded-lg border border-border-neutral">
-                        <div>
-                            <p className="font-medium text-text-primary">Enable RAG</p>
-                            <p className="text-xs text-text-secondary">Allow character to search indexed documents.</p>
-                        </div>
-                        <input type="checkbox" checked={formState.ragEnabled} onChange={e => handleFormChange('ragEnabled', e.target.checked)} className="h-5 w-5 rounded border-border-strong text-primary-600 focus:ring-primary-500"/>
-                    </div>
-                    {formState.ragEnabled && (
-                        <div className="space-y-2 animate-in slide-in-from-top-2">
-                            <div className="flex justify-between items-center">
-                                <p className="text-sm font-medium text-text-primary">Select Documents</p>
-                            </div>
-                            <div className="max-h-40 overflow-y-auto border border-border-neutral rounded p-2 space-y-1 bg-background-primary/50">
-                                {availableDocuments.length === 0 ? (
-                                    <p className="text-xs text-text-secondary p-2 italic">No documents in library. Upload files in the Knowledge panel.</p>
-                                ) : availableDocuments.map(doc => (
-                                    <div key={doc.id} className="flex items-center space-x-2 hover:bg-background-tertiary p-1.5 rounded cursor-pointer transition-colors" onClick={() => handleToggleKnowledge(doc.id)}>
-                                        <input type="checkbox" checked={(formState.knowledgeSourceIds || []).includes(doc.id)} readOnly className="h-4 w-4 rounded border-border-strong text-primary-600"/>
-                                        <span className="text-sm text-text-primary truncate">{doc.fileName}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </Section>
-
-            <Section title="Advanced AI Traits">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
-                        <div className="min-w-0">
-                            <p className="font-medium text-text-primary truncate">Deep Thinking</p>
-                            <p className="text-xs text-text-secondary">Chain of thought logic.</p>
-                        </div>
-                        <input type="checkbox" checked={formState.thinkingEnabled} onChange={e => handleFormChange('thinkingEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
-                        <div className="min-w-0">
-                            <p className="font-medium text-text-primary truncate">Google Search</p>
-                            <p className="text-xs text-text-secondary">Real-time web browsing.</p>
-                        </div>
-                        <input type="checkbox" checked={formState.searchEnabled} onChange={e => handleFormChange('searchEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
-                        <div className="min-w-0">
-                            <p className="font-medium text-text-primary truncate">Terminal Access</p>
-                            <p className="text-xs text-text-secondary">OS control via sandbox.</p>
-                        </div>
-                        <input type="checkbox" checked={formState.terminalEnabled} onChange={e => handleFormChange('terminalEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-background-tertiary/20 rounded-xl border border-border-neutral">
-                        <div className="min-w-0">
-                            <p className="font-medium text-text-primary truncate">Dynamic Avatar</p>
-                            <p className="text-xs text-text-secondary">Avatar changes with mood.</p>
-                        </div>
-                        <input type="checkbox" checked={formState.dynamicAvatarEnabled} onChange={e => handleFormChange('dynamicAvatarEnabled', e.target.checked)} className="h-5 w-5 rounded text-primary-600"/>
-                    </div>
-                </div>
-            </Section>
-
-            <Section title="API Configuration">
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-text-primary">API Service Preset</label>
-                        <select value={selectedPreset} onChange={(e) => {
-                            setSelectedPreset(e.target.value);
-                            const p = API_PRESETS[e.target.value];
-                            handleFormChange('apiConfig', { service: p.service, apiEndpoint: p.endpoint, model: p.models[0], apiKey: formState.apiConfig?.apiKey });
-                        }} className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary">
-                            {Object.entries(API_PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-text-primary">Model Name</label>
-                            <input type="text" value={formState.apiConfig?.model} onChange={e => handleFormChange('apiConfig', { ...formState.apiConfig!, model: e.target.value })} className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary" placeholder="e.g. gpt-4o, gemini-3-flash-preview, llama-3..."/>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-text-primary">Custom API Endpoint</label>
-                            <input type="text" value={formState.apiConfig?.apiEndpoint} onChange={e => handleFormChange('apiConfig', { ...formState.apiConfig!, apiEndpoint: e.target.value })} className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary" placeholder="https://api..."/>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-text-primary">API Key (Optional)</label>
-                            <input type="password" value={formState.apiConfig?.apiKey} onChange={e => handleFormChange('apiConfig', { ...formState.apiConfig!, apiKey: e.target.value })} className="mt-1 block w-full bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary" placeholder="Enter key if required..."/>
-                        </div>
-                    </div>
+            <Section title="Persona Details">
+                <div>
+                  <label className="block text-sm font-medium text-text-primary">Roleplay Instructions (System Prompt)</label>
+                  <div className="mt-1 flex space-x-2">
+                    <textarea value={formState.personality} onChange={(e) => handleFormChange('personality', e.target.value)} rows={6} className="flex-1 bg-background-secondary border border-border-strong rounded-md py-2 px-3 text-text-primary font-mono text-sm"/>
+                    <button type="button" onClick={() => handleAiAssist('personality')} className="p-2 bg-background-tertiary rounded-md h-fit hover:text-primary-500 transition-colors">
+                        {isAiLoading === 'personality' ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : <SparklesIcon className="w-5 h-5"/>}
+                    </button>
+                  </div>
                 </div>
             </Section>
 

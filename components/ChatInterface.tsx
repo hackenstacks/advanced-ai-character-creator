@@ -10,8 +10,6 @@ import { SpeakerIcon } from './icons/SpeakerIcon.tsx';
 import { MemoryImportModal } from './MemoryImportModal.tsx';
 import { ImageGenerationWindow } from './ImageGenerationWindow.tsx';
 import { TerminalWindow } from './TerminalWindow.tsx';
-import { PaperClipIcon } from './icons/PaperClipIcon.tsx';
-import { PlusIcon } from './icons/PlusIcon.tsx';
 import { UsersIcon } from './icons/UsersIcon.tsx';
 import { TerminalIcon } from './icons/TerminalIcon.tsx';
 import { ManageParticipantsModal } from './ManageParticipantsModal.tsx';
@@ -23,6 +21,7 @@ import { RefreshIcon } from './icons/RefreshIcon.tsx';
 import { CheckCircleIcon } from './icons/CheckCircleIcon.tsx';
 import { XMarkIcon } from './icons/XMarkIcon.tsx';
 import { PaperAirplaneIcon } from './icons/PaperAirplaneIcon.tsx';
+import { UploadIcon } from './icons/UploadIcon.tsx';
 
 interface ChatInterfaceProps {
   session: ChatSession;
@@ -38,12 +37,13 @@ interface ChatInterfaceProps {
   handlePluginApiRequest: (request: GeminiApiRequest) => Promise<any>;
   fileSystem: FileSystemState;
   onUpdateFileSystem: (newState: FileSystemState) => void;
+  onImportChatHistory: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
     session, allCharacters, allChatSessions, allLorebooks, userKeys, 
     onSessionUpdate, onCharacterUpdate, onTriggerHook, onMemoryImport, onSaveBackup,
-    handlePluginApiRequest, fileSystem, onUpdateFileSystem
+    handlePluginApiRequest, fileSystem, onUpdateFileSystem, onImportChatHistory
 }) => {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -61,6 +61,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastClickRef = useRef<{time: number, target: string}>({time: 0, target: ''});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const participants = useMemo(() => 
     allCharacters.filter(c => session.characterIds.includes(c.id)), 
@@ -85,11 +86,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const triggerAIResponse = useCallback(async (character: Character, history: Message[], override?: string) => {
     if (isStreaming) return;
-    
     setIsStreaming(true);
     setStreamingCharacterId(character.id);
     setStreamingContent('');
-    
     let fullResponse = '';
     try {
         await streamChatResponse(character, participants, history, (chunk: any) => {
@@ -101,8 +100,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             }
         }, override);
     } catch (err) {
-        logger.error("Streaming failed", err);
-        fullResponse += `\n\n[System Error: Failed to connect to AI service. Please check your API key or endpoint.]`;
+        fullResponse += `\n\n[System Error: Failed to connect to AI service.]`;
         setStreamingContent(fullResponse);
     } finally {
         setIsStreaming(false);
@@ -115,9 +113,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onSessionUpdate({ ...session, messages: [...history, finalMessage] });
         setStreamingContent('');
         setStreamingCharacterId(null);
-
         if (isTtsEnabled) ttsService.speak(fullResponse, character.voiceId);
-
         if (character.dynamicAvatarEnabled && fullResponse.length > 20) {
             const prompt = await generateAvatarPrompt(character, fullResponse);
             const url = await handlePluginApiRequest({ type: 'generateImage', prompt });
@@ -132,21 +128,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const history = [...session.messages, userMessage];
     onSessionUpdate({ ...session, messages: history });
     setInput('');
-    
-    if (participants.length > 0) {
-        triggerAIResponse(participants[0], history);
-    }
+    if (participants.length > 0) triggerAIResponse(participants[0], history);
   };
 
   const handleRegenerate = (index: number) => {
     if (isStreaming) return;
-    const message = session.messages[index];
-    if (message.role !== 'model' || !message.characterId) return;
-
-    const char = allCharacters.find(c => c.id === message.characterId);
+    const msg = session.messages[index];
+    if (msg.role !== 'model' || !msg.characterId) return;
+    const char = allCharacters.find(c => c.id === msg.characterId);
     if (!char) return;
-
-    // History is everything before this message
     const history = session.messages.slice(0, index);
     onSessionUpdate({ ...session, messages: history });
     triggerAIResponse(char, history);
@@ -157,18 +147,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     onSessionUpdate({ ...session, messages: updatedMessages });
   };
 
-  const startEditing = (index: number, content: string) => {
-    setEditingMessageIndex(index);
-    setEditContent(content);
-  };
-
   const saveEdit = () => {
     if (editingMessageIndex === null) return;
     const updatedMessages = [...session.messages];
-    updatedMessages[editingMessageIndex] = {
-        ...updatedMessages[editingMessageIndex],
-        content: editContent
-    };
+    updatedMessages[editingMessageIndex] = { ...updatedMessages[editingMessageIndex], content: editContent };
     onSessionUpdate({ ...session, messages: updatedMessages });
     setEditingMessageIndex(null);
   };
@@ -180,47 +162,20 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     if (action === 'narrate') {
         if (isDoubleClick) {
-            triggerAIResponse(participants[0], session.messages, "Narrate the current scene and environment based on recent events.");
+            triggerAIResponse(participants[0], session.messages, "Narrate the current scene.");
         } else {
-            const prompt = window.prompt("What should the narrator describe?");
-            if (prompt) triggerAIResponse(participants[0], session.messages, `[Narrator Instruction]: ${prompt}`);
+            const p = window.prompt("Narration instruction:");
+            if (p) triggerAIResponse(participants[0], session.messages, `[Narrator Instruction]: ${p}`);
         }
-    } else if (action === 'image') {
-        setIsImageWindowVisible(true);
-    }
+    } else if (action === 'image') setIsImageWindowVisible(true);
   };
 
   return (
     <div className="flex flex-col h-full bg-background-primary overflow-hidden">
-      {isImageWindowVisible && (
-        <ImageGenerationWindow 
-            onClose={() => setIsImageWindowVisible(false)} 
-            onGenerate={(prompt) => handlePluginApiRequest({ type: 'generateImage', prompt })}
-        />
-      )}
-      {isTerminalVisible && (
-        <TerminalWindow 
-            fileSystem={fileSystem} 
-            onUpdateFileSystem={onUpdateFileSystem} 
-            onClose={() => setIsTerminalVisible(false)} 
-        />
-      )}
-      {isMemoryModalVisible && (
-        <MemoryImportModal 
-            allSessions={allChatSessions} 
-            currentSessionId={session.id} 
-            onClose={() => setIsMemoryModalVisible(false)} 
-            onImport={(id) => onMemoryImport(id, session.id)} 
-        />
-      )}
-      {isManageParticipantsVisible && (
-        <ManageParticipantsModal 
-            allCharacters={allCharacters} 
-            currentParticipantIds={session.characterIds} 
-            onSave={(ids) => onSessionUpdate({...session, characterIds: ids})} 
-            onClose={() => setIsManageParticipantsVisible(false)} 
-        />
-      )}
+      {isImageWindowVisible && <ImageGenerationWindow onClose={() => setIsImageWindowVisible(false)} onGenerate={(prompt) => handlePluginApiRequest({ type: 'generateImage', prompt })}/>}
+      {isTerminalVisible && <TerminalWindow fileSystem={fileSystem} onUpdateFileSystem={onUpdateFileSystem} onClose={() => setIsTerminalVisible(false)} />}
+      {isMemoryModalVisible && <MemoryImportModal allSessions={allChatSessions} currentSessionId={session.id} onClose={() => setIsMemoryModalVisible(false)} onImport={(id) => onMemoryImport(id, session.id)} />}
+      {isManageParticipantsVisible && <ManageParticipantsModal allCharacters={allCharacters} currentParticipantIds={session.characterIds} onSave={(ids) => onSessionUpdate({...session, characterIds: ids})} onClose={() => setIsManageParticipantsVisible(false)} />}
 
       <header className="flex items-center p-3 border-b border-border-neutral justify-between bg-background-secondary/50 backdrop-blur-md z-10">
         <div className="flex items-center space-x-3 min-w-0">
@@ -232,6 +187,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
         </div>
         <div className="flex items-center space-x-2">
+            <input type="file" ref={fileInputRef} onChange={onImportChatHistory} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} className="p-2 text-text-secondary hover:bg-background-tertiary rounded-md" title="Import Chat History">
+                <UploadIcon className="w-5 h-5" />
+            </button>
             <button onClick={() => setIsTtsEnabled(!isTtsEnabled)} className={`p-2 rounded-md ${isTtsEnabled ? 'text-primary-500 bg-primary-500/10' : 'text-text-secondary hover:bg-background-tertiary'}`} title="Auto TTS">
                 <SpeakerIcon className="w-5 h-5" />
             </button>
@@ -246,7 +205,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="h-full flex flex-col items-center justify-center text-center opacity-30 select-none">
                 <ChatBubbleIcon className="w-20 h-20 mb-4" />
                 <p className="text-xl font-bold">New Story Awaits</p>
-                <p>Send a message to begin the simulation.</p>
+                <p>Send a message to begin.</p>
             </div>
         )}
         
@@ -257,33 +216,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             
             return (
               <div key={index} className={`flex items-start gap-3 group/msg ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                {!isUser && msgChar && (
-                  <img 
-                    src={msgChar.currentAvatarUrl || msgChar.avatarUrl} 
-                    className={`${avatarSizeClass} rounded-full object-cover border-2 border-border-neutral shadow-sm flex-shrink-0`} 
-                  />
-                )}
-                {isUser && <div className={`${avatarSizeClass} bg-primary-600 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-sm`}>U</div>}
+                {!isUser && msgChar && <img src={msgChar.currentAvatarUrl || msgChar.avatarUrl} className={`${avatarSizeClass} rounded-full object-cover border-2 border-border-neutral flex-shrink-0`} />}
+                {isUser && <div className={`${avatarSizeClass} bg-primary-600 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}>U</div>}
                 
                 <div className={`flex flex-col max-w-[80%] ${isUser ? 'items-end' : 'items-start'} relative`}>
                   {msgChar && !isUser && <span className="text-xs font-bold text-text-secondary mb-1 ml-1">{msgChar.name}</span>}
                   
-                  {/* Action Menu (Hover) */}
-                  <div className={`absolute top-0 ${isUser ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/msg:opacity-100 flex items-center bg-background-secondary border border-border-neutral rounded shadow-lg p-1 space-x-1 z-20 transition-opacity`}>
-                    <button onClick={() => startEditing(index, msg.content)} className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary" title="Edit Message"><PencilIcon className="w-4 h-4" /></button>
-                    {!isUser && <button onClick={() => handleRegenerate(index)} className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-text-primary" title="Regenerate Response"><RefreshIcon className="w-4 h-4" /></button>}
-                    <button onClick={() => handleDeleteMessage(index)} className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-accent-red" title="Delete Message"><TrashIcon className="w-4 h-4" /></button>
+                  <div className={`absolute top-0 ${isUser ? 'right-full mr-2' : 'left-full ml-2'} opacity-0 group-hover/msg:opacity-100 flex items-center bg-background-secondary border border-border-neutral rounded shadow p-1 space-x-1 z-20 transition-opacity`}>
+                    <button onClick={() => { setEditingMessageIndex(index); setEditContent(msg.content); }} className="p-1 hover:bg-background-tertiary rounded text-text-secondary" title="Edit"><PencilIcon className="w-4 h-4" /></button>
+                    {!isUser && <button onClick={() => handleRegenerate(index)} className="p-1 hover:bg-background-tertiary rounded text-text-secondary" title="Regenerate"><RefreshIcon className="w-4 h-4" /></button>}
+                    <button onClick={() => handleDeleteMessage(index)} className="p-1 hover:bg-background-tertiary rounded text-text-secondary hover:text-accent-red" title="Delete"><TrashIcon className="w-4 h-4" /></button>
                   </div>
 
                   <div className={`p-3 rounded-2xl shadow-sm transition-all ${isUser ? 'bg-primary-600 text-white rounded-tr-none' : 'bg-background-secondary text-text-primary rounded-tl-none border border-border-neutral'} ${isEditing ? 'ring-2 ring-primary-500' : ''}`}>
                     {isEditing ? (
                         <div className="flex flex-col space-y-2 min-w-[200px]">
-                            <textarea 
-                                value={editContent} 
-                                onChange={(e) => setEditContent(e.target.value)}
-                                className="bg-transparent border-none outline-none text-inherit resize-none w-full min-h-[60px]"
-                                autoFocus
-                            />
+                            <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="bg-transparent border-none outline-none text-inherit resize-none w-full min-h-[60px]" autoFocus />
                             <div className="flex justify-end space-x-2">
                                 <button onClick={() => setEditingMessageIndex(null)} className="p-1 hover:bg-white/10 rounded"><XMarkIcon className="w-5 h-5" /></button>
                                 <button onClick={saveEdit} className="p-1 hover:bg-white/10 rounded"><CheckCircleIcon className="w-5 h-5" /></button>
@@ -297,26 +245,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             );
         })}
-
         {isStreaming && (
             <div className="flex items-start gap-3">
-                {streamingCharacterId && (
-                    <img 
-                        src={allCharacters.find(c => c.id === streamingCharacterId)?.avatarUrl} 
-                        className={`${avatarSizeClass} rounded-full object-cover border-2 border-primary-500 animate-pulse`} 
-                    />
-                )}
+                {streamingCharacterId && <img src={allCharacters.find(c => c.id === streamingCharacterId)?.avatarUrl} className={`${avatarSizeClass} rounded-full object-cover border-2 border-primary-500 animate-pulse`} />}
                 <div className="flex flex-col max-w-[80%] items-start">
-                    <div className="p-3 rounded-2xl bg-background-secondary text-text-primary rounded-tl-none border border-primary-500/30 shadow-md">
-                        {streamingContent ? (
-                            <p className="whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: streamingContent.replace(/\n/g, '<br/>') }} />
-                        ) : (
-                            <div className="flex space-x-1 py-1">
-                                <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce [animation-delay:-.15s]"></div>
-                                <div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce [animation-delay:-.3s]"></div>
-                            </div>
-                        )}
+                    <div className="p-3 rounded-2xl bg-background-secondary text-text-primary rounded-tl-none border border-primary-500/30">
+                        {streamingContent ? <p className="whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: streamingContent.replace(/\n/g, '<br/>') }} /> : <div className="flex space-x-1 py-1"><div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce"></div><div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce [animation-delay:-.15s]"></div><div className="w-2 h-2 bg-text-secondary rounded-full animate-bounce [animation-delay:-.3s]"></div></div>}
                     </div>
                 </div>
             </div>
@@ -335,23 +269,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             rows={1}
           />
           <div className="flex items-center space-x-1 px-1 mb-1">
-              <button onClick={() => handleActionClick('narrate')} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Narrator (Dbl-Click for Auto)">
-                  <BookIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => handleActionClick('image')} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Generate Image">
-                  <ImageIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => setIsMemoryModalVisible(true)} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Import Memories">
-                  <BrainIcon className="w-5 h-5" />
-              </button>
-              <button onClick={() => setIsTerminalVisible(true)} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Terminal">
-                  <TerminalIcon className="w-5 h-5" />
-              </button>
+              <button onClick={() => handleActionClick('narrate')} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Narrator"><BookIcon className="w-5 h-5" /></button>
+              <button onClick={() => handleActionClick('image')} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Generate Image"><ImageIcon className="w-5 h-5" /></button>
+              <button onClick={() => setIsMemoryModalVisible(true)} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Memories"><BrainIcon className="w-5 h-5" /></button>
+              <button onClick={() => setIsTerminalVisible(true)} className="p-2 text-text-secondary hover:text-primary-500 hover:bg-background-tertiary rounded-lg transition-all" title="Terminal"><TerminalIcon className="w-5 h-5" /></button>
               <div className="w-px h-6 bg-border-neutral mx-1"></div>
               <button 
                 onClick={handleSendMessage} 
                 disabled={!input.trim() || isStreaming}
-                className="p-3 bg-primary-600 text-white rounded-xl hover:bg-primary-500 disabled:opacity-50 disabled:grayscale transition-all shadow-md"
+                className="p-3 bg-primary-600 text-white rounded-xl hover:bg-primary-500 disabled:opacity-50 transition-all shadow-md"
               >
                 {isStreaming ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : <PaperAirplaneIcon className="w-5 h-5" />}
               </button>

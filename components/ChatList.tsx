@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ChatSession, Character } from '../types.ts';
 import { TrashIcon } from './icons/TrashIcon.tsx';
 import { UsersIcon } from './icons/UsersIcon.tsx';
 import { DownloadIcon } from './icons/DownloadIcon.tsx';
 import { ArchiveBoxIcon } from './icons/ArchiveBoxIcon.tsx';
 import { RestoreIcon } from './icons/RestoreIcon.tsx';
+import { UploadIcon } from './icons/UploadIcon.tsx';
 
 interface ChatListProps {
   chatSessions: ChatSession[];
@@ -17,6 +18,7 @@ interface ChatListProps {
   onToggleArchiveView: () => void;
   onRestoreChat: (id: string) => void;
   onPermanentlyDeleteChat: (id: string) => void;
+  onImportChat?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
@@ -29,24 +31,36 @@ export const ChatList: React.FC<ChatListProps> = ({
   showArchived,
   onToggleArchiveView,
   onRestoreChat,
-  onPermanentlyDeleteChat
+  onPermanentlyDeleteChat,
+  onImportChat
 }) => {
   const getCharacter = (id: string) => characters.find(c => c.id === id);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-       <button 
-        onClick={onToggleArchiveView}
-        className="w-full flex items-center justify-center space-x-2 mb-2 text-sm py-2 px-3 rounded-md text-text-primary bg-background-tertiary hover:bg-opacity-80 transition-colors"
-      >
-        <ArchiveBoxIcon className="w-5 h-5" />
-        <span>{showArchived ? 'View Active Chats' : 'View Archived Chats'}</span>
-      </button>
+       <div className="flex space-x-1 mb-2">
+            <button 
+                onClick={onToggleArchiveView}
+                className="flex-1 flex items-center justify-center space-x-2 text-sm py-2 px-3 rounded-md text-text-primary bg-background-tertiary hover:bg-opacity-80 transition-colors"
+            >
+                <ArchiveBoxIcon className="w-5 h-5" />
+                <span>{showArchived ? 'Active' : 'Archived'}</span>
+            </button>
+            <input type="file" ref={fileInputRef} onChange={onImportChat} className="hidden" />
+            <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-md text-text-primary bg-background-tertiary hover:bg-opacity-80 transition-colors"
+                title="Import Chat History"
+            >
+                <UploadIcon className="w-5 h-5" />
+            </button>
+       </div>
 
       <div className="overflow-y-auto pr-2 space-y-2">
         {chatSessions.length === 0 ? (
           <p className="text-text-secondary text-sm text-center py-4">
-            {showArchived ? 'No archived chats.' : "No chats yet. Click '+' to start a new conversation."}
+            {showArchived ? 'No archived chats.' : "No chats yet."}
           </p>
         ) : (
           chatSessions.map((session) => {

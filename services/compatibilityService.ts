@@ -1,4 +1,4 @@
-import { Character, Lorebook, LorebookEntry } from '../types.ts';
+import { Character, Lorebook, LorebookEntry, ChatSession } from '../types.ts';
 import { logger } from './loggingService.ts';
 
 // --- Utilities ---
@@ -12,7 +12,6 @@ export const extractCharaFromPng = async (file: File): Promise<string | null> =>
         const buffer = await file.arrayBuffer();
         const view = new DataView(buffer);
         
-        // Check PNG signature: 89 50 4E 47 0D 0A 1A 0A
         if (view.getUint32(0) !== 0x89504E47 || view.getUint32(4) !== 0x0D0A1A0A) {
             return null;
         }
@@ -20,35 +19,23 @@ export const extractCharaFromPng = async (file: File): Promise<string | null> =>
         let offset = 8;
         const decoder = new TextDecoder();
 
-        while (offset < view.byteLength) {
+        while (offset < view.byteLength - 8) {
             const length = view.getUint32(offset);
             const type = decoder.decode(new Uint8Array(buffer, offset + 4, 4));
 
             if (type === 'tEXt' || type === 'iTXt') {
                 const data = new Uint8Array(buffer, offset + 8, length);
-                const text = decoder.decode(data);
+                const chunkContent = decoder.decode(data);
                 
-                // Keyword is usually 'chara' followed by a null byte
-                if (text.startsWith('chara\0')) {
-                    let jsonPart = text.substring(6);
-                    // Check if it's base64 encoded (common in V2 cards)
+                if (chunkContent.startsWith('chara\0')) {
+                    const jsonPart = chunkContent.substring(6);
                     try {
-                        const decoded = atob(jsonPart);
-                        // Validate it's JSON
-                        JSON.parse(decoded);
-                        return decoded;
+                        return atob(jsonPart);
                     } catch (e) {
-                        // If not base64, check if it's raw JSON
-                        try {
-                            JSON.parse(jsonPart);
-                            return jsonPart;
-                        } catch (e2) {
-                            return null;
-                        }
+                        return jsonPart;
                     }
                 }
             }
-            // Move to next chunk: length field + type field + data + CRC field
             offset += length + 12;
         }
         return null;
@@ -59,278 +46,140 @@ export const extractCharaFromPng = async (file: File): Promise<string | null> =>
 };
 
 /**
- * Fetches an image from a URL and converts it to a base64 data string.
- * Handles various image types and CORS issues by fetching through the app's context.
+ * Robust Lorebook/World Info detection.
+ * Handles SillyTavern exports, Agnaistic arrays, and dictionary-style objects.
  */
-const imageUrlToBase64 = async (url: string): Promise<string> => {
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.statusText}`);
-        }
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } catch (error) {
-        logger.warn(`Could not convert image URL to base64. It might be a CORS issue or an invalid URL. URL: ${url}`, error);
-        return ''; // Return empty string or a default placeholder if needed
-    }
-};
-
-const getBase64FromDataUrl = (dataUrl: string): string => {
-    return dataUrl.substring(dataUrl.indexOf(',') + 1);
-}
-
-// --- Conversion Logic ---
-
-/**
- * Converts an AI Nexus character object to a Character Card v2 compatible object.
- * It embeds AI Nexus specific data in a private `_aiNexusData` block for lossless re-import.
- */
-export const nexusToV2 = async (character: Character): Promise<any> => {
-    logger.log(`Starting character export for: ${character.name}`);
+export const sillyTavernWorldInfoToNexus = (data: any, fileName: string): Omit<Lorebook, 'id'> | null => {
+    if (!data || typeof data !== 'object') return null;
     
-    let char_persona = `## ${character.name}\n`;
-    if (character.description) char_persona += `${character.description}\n\n`;
-
-    char_persona += "### Physical Appearance\n";
-    char_persona += `${character.physicalAppearance || 'Not specified'}\n\n`;
+    // Check for SillyTavern wrapper or root world_info key
+    const actualData = data.data || data.world_info || data;
+    let entriesData: any[] = [];
     
-    char_persona += "### Personality Traits\n";
-    char_persona += `${character.personalityTraits || 'Not specified'}\n\n`;
-
-    if (character.lore && character.lore.length > 0) {
-        char_persona += "### Lore\n";
-        char_persona += character.lore.map(fact => `- ${fact}`).join('\n') + '\n\n';
+    if (actualData.entries) {
+        entriesData = Array.isArray(actualData.entries) ? actualData.entries : Object.values(actualData.entries);
+    } else if (Array.isArray(actualData)) {
+        entriesData = actualData;
+    } else if (actualData.character_book?.entries) {
+        entriesData = Array.isArray(actualData.character_book.entries) ? actualData.character_book.entries : Object.values(actualData.character_book.entries);
+    } else {
+        const vals = Object.values(actualData);
+        const isEntryMap = vals.length > 0 && vals.every(v => v && typeof v === 'object' && ('content' in v || 'key' in v || 'keys' in v));
+        if (isEntryMap) entriesData = vals;
     }
 
-    const avatarDataUrl = character.avatarUrl.startsWith('data:image') 
-        ? character.avatarUrl 
-        : await imageUrlToBase64(character.avatarUrl);
+    if (entriesData.length === 0) return null;
     
-    const base64Avatar = avatarDataUrl ? getBase64FromDataUrl(avatarDataUrl) : '';
+    const validEntries: LorebookEntry[] = entriesData
+        .filter(e => e && typeof e === 'object' && (e.content || e.entry))
+        .map(entry => {
+            let keys: string[] = [];
+            if (Array.isArray(entry.keys)) keys = entry.keys;
+            else if (Array.isArray(entry.key)) keys = entry.key;
+            else if (typeof entry.key === 'string') keys = entry.key.split(',').map((s: string) => s.trim());
+            else if (typeof entry.keys === 'string') keys = entry.keys.split(',').map((s: string) => s.trim());
+            
+            return {
+                id: crypto.randomUUID(),
+                keys: keys.filter(k => k),
+                content: entry.content || entry.entry || ''
+            };
+        })
+        .filter(e => e.content && e.keys.length > 0);
+    
+    if (validEntries.length === 0) return null;
 
-    const cardData = {
-        name: character.name,
-        description: character.description,
-        personality: character.personality,
-        first_mes: character.firstMessage, 
-        mes_example: '',
-        scenario: '',
-        char_persona: char_persona.trim(),
-        avatar: base64Avatar,
-        // Private block for perfect re-import into AI Nexus
-        _aiNexusData: {
-            version: '1.2',
-            id: character.id, // CRITICAL: Export the ID to preserve identity
-            name: character.name,
-            description: character.description,
-            personality: character.personality,
-            avatarUrl: character.avatarUrl,
-            tags: character.tags,
-            createdAt: character.createdAt,
-            physicalAppearance: character.physicalAppearance,
-            personalityTraits: character.personalityTraits,
-            lore: character.lore,
-            memory: character.memory,
-            apiConfig: character.apiConfig,
-            firstMessage: character.firstMessage,
-            characterType: character.characterType,
-            keys: { publicKey: character.keys?.publicKey }, // Only export public key
-            signature: character.signature,
-            userPublicKeyJwk: character.userPublicKeyJwk,
-            knowledgeSourceIds: character.knowledgeSourceIds,
-            ragEnabled: character.ragEnabled,
-            embeddingConfig: character.embeddingConfig
-        }
-    };
-    
     return {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
-        data: cardData
+        name: actualData.name || fileName.replace(/\.[^/.]+$/, ""),
+        description: actualData.description || `Imported Lorebook`,
+        entries: validEntries,
     };
 };
 
 /**
  * Converts a Character Card v2 compatible object into an AI Nexus Character.
- * It prioritizes the private `_aiNexusData` block if it exists.
- * It can also auto-detect narrator/scenario bots and parse their content into a Lorebook.
  */
 export const v2ToNexus = (card: any): { character: Character, lorebook?: Lorebook } | null => {
-    // If card is null or undefined, return null
     if (!card) return null;
-
-    // Handle different structures: { spec: ..., data: ... } or just { name: ... }
     const data = card.data || card; 
-    
-    // Basic validation: must have a name
-    if (!data || !data.name) {
-        return null; 
-    }
+    if (!data || !data.name) return null;
 
-    // Check if it's actually a chat session (avoid false positives)
-    if (Array.isArray(data.characterIds) && Array.isArray(data.messages)) {
-        logger.debug(`File identified as Chat Session, not a character card. Skipping v2ToNexus.`);
-        return null;
-    }
+    // Stricter check: If it contains 'entries' but lacks roleplay behavior fields, it's a lorebook.
+    const hasRoleplayFields = !!(data.personality || data.scenario || data.char_persona || data.system_prompt);
+    if (data.entries && !hasRoleplayFields) return null;
 
-    // Check compatibility markers
-    const isV2Spec = card.spec === 'chara_card_v2' || card.spec === 'chara_card_v2.0';
-    const hasCharFields = data.description !== undefined || 
-                          data.personality !== undefined || 
-                          data.char_persona !== undefined || 
-                          isV2Spec;
-
-    if (!hasCharFields) {
-         logger.debug(`File does not contain character-specific fields (description, personality, etc.). Skipping v2ToNexus.`);
-        return null;
-    }
-
-    // 1. Try to use _aiNexusData for perfect fidelity
     if (data._aiNexusData) {
-        logger.log(`Importing character "${data.name}" using _aiNexusData block.`);
         const nexusData = data._aiNexusData;
-        
-        // CRITICAL FIX: Preserve the original ID if present to maintain identity link
-        // We strip private keys to prevent security issues when sharing cards
-        const character: Character = {
-            ...nexusData,
-            id: nexusData.id || crypto.randomUUID(), 
-            keys: undefined, 
-        };
-        return { character };
+        return { character: { ...nexusData, id: nexusData.id || crypto.randomUUID() } };
     }
 
-    // 2. Standard V2 Import
-    logger.log(`Importing standard character card: ${data.name}`);
-    
     const avatarUrl = data.avatar?.startsWith('http') ? data.avatar : (data.avatar ? `data:image/png;base64,${data.avatar}` : '');
     
-    const shortDescription = (data.description?.split('\n')[0] || data.creator_notes || `A character named ${data.name}`).substring(0, 200);
-
     let combinedPersonality = '';
     if (data.system_prompt) combinedPersonality += `${data.system_prompt.trim()}\n\n`;
     if (data.personality) combinedPersonality += `${data.personality.trim()}\n\n`;
     if (data.description) combinedPersonality += `${data.description.trim()}\n\n`;
     if (data.scenario) combinedPersonality += `Scenario: ${data.scenario.trim()}\n\n`;
     if (data.char_persona) combinedPersonality += `${data.char_persona.trim()}\n\n`;
-    if (data.mes_example) combinedPersonality += `Example Messages:\n${data.mes_example.trim()}\n\n`;
-    if (data.post_history_instructions) combinedPersonality += `Post History Instructions: ${data.post_history_instructions.trim()}\n\n`;
-
-    const contentFields = combinedPersonality.toLowerCase();
-    const narratorKeywords = ["narrator", "dungeon master", "game master", "setting", "scenario", "world", "text based game"];
-    const isNarrator = narratorKeywords.some(kw => contentFields.includes(kw));
 
     let autoLorebook: Lorebook | undefined = undefined;
-
-    // Auto-parse lorebook from narrator cards that use markdown-style headers
-    if (isNarrator) {
-        const loreEntries: LorebookEntry[] = [];
-        const sections = combinedPersonality.split(/\n(?=\*\*)/); // Split by lines that start with **
-        
-        for (const section of sections) {
-            const match = section.match(/^\*\*(.*?)\*\*\s*\n([\s\S]*)/);
-            if (match) {
-                const key = match[1].trim();
-                const content = match[2].trim();
-                if (key && content && key.length < 100) { // Basic sanity check
-                    loreEntries.push({
-                        id: crypto.randomUUID(),
-                        keys: [key],
-                        content: content
-                    });
-                }
-            }
-        }
-
-        if (loreEntries.length > 0) {
-            logger.log(`Automatically parsed ${loreEntries.length} entries into a new Lorebook for "${data.name}".`);
-            autoLorebook = {
-                id: crypto.randomUUID(),
-                name: `${data.name} World`,
-                description: `Auto-generated from the ${data.name} character card.`,
-                entries: loreEntries
-            };
+    if (data.character_book?.entries) {
+        const nexusLore = sillyTavernWorldInfoToNexus(data.character_book, data.name);
+        if (nexusLore) {
+            autoLorebook = { ...nexusLore, id: crypto.randomUUID() };
         }
     }
-
-    const newCharacter: Character = {
-        id: crypto.randomUUID(),
-        name: data.name,
-        description: shortDescription,
-        personality: combinedPersonality.trim(),
-        firstMessage: data.first_mes || '',
-        avatarUrl: avatarUrl,
-        tags: data.tags || [],
-        createdAt: new Date().toISOString(),
-        characterType: isNarrator ? 'narrator' : 'character',
-        physicalAppearance: '', 
-        personalityTraits: (data.tags || []).join(', '),
-        lore: [],
-        memory: `Memory of ${data.name} begins here.`,
-    };
-
-    return { character: newCharacter, lorebook: autoLorebook };
-};
-
-/**
- * Converts a SillyTavern World Info JSON into an AI Nexus Lorebook.
- */
-export const sillyTavernWorldInfoToNexus = (data: any, fileName: string): Omit<Lorebook, 'id'> | null => {
-    // Handle both the object-based and array-based formats
-    let entriesData: any[] = [];
-    
-    // Check if it's potentially a ST world info file
-    if (data && typeof data === 'object') {
-        if (Array.isArray(data)) {
-            entriesData = data;
-        } else if (data.entries && typeof data.entries === 'object') {
-            entriesData = Array.isArray(data.entries) ? data.entries : Object.values(data.entries);
-        } else if (Object.keys(data).every(k => !isNaN(Number(k)))) {
-            // Case where it's an object of entries with numeric keys at top level
-            entriesData = Object.values(data);
-        }
-    }
-
-    if (entriesData.length === 0) return null;
-    
-    // Basic validation of the first entry to confirm format
-    const firstEntry = entriesData[0];
-    const isWorldInfo = firstEntry && typeof firstEntry === 'object' && 
-                        (Array.isArray(firstEntry.key) || Array.isArray(firstEntry.keys) || typeof firstEntry.key === 'string') && 
-                        typeof firstEntry.content === 'string';
-    
-    if (!isWorldInfo) {
-        return null;
-    }
-
-    logger.log(`Detected SillyTavern/Agnaistic World Info format from file: ${fileName}`);
-
-    const entries: LorebookEntry[] = entriesData
-        .filter(entry => entry && entry.content && entry.content.trim() !== '')
-        .map(entry => {
-            let keys: string[] = [];
-            if (Array.isArray(entry.keys)) keys = entry.keys;
-            else if (Array.isArray(entry.key)) keys = entry.key;
-            else if (typeof entry.key === 'string') keys = entry.key.split(',').map((s: string) => s.trim());
-            
-            return {
-                id: crypto.randomUUID(),
-                keys: keys.map((k: string) => k.trim()).filter((k: string) => k),
-                content: entry.content
-            };
-        });
-    
-    const lorebookName = data.name || fileName.replace(/\.[^/.]+$/, "");
 
     return {
-        name: lorebookName,
-        description: data.description || `Imported from ${fileName}`,
-        entries: entries,
+        character: {
+            id: crypto.randomUUID(),
+            name: data.name,
+            description: data.description || '',
+            personality: combinedPersonality.trim(),
+            firstMessage: data.first_mes || '',
+            avatarUrl: avatarUrl,
+            tags: data.tags || [],
+            createdAt: new Date().toISOString(),
+            characterType: 'character',
+            lore: [],
+            memory: `Memory begins here.`,
+        },
+        lorebook: autoLorebook
     };
+};
+
+// --- FIX: Added nexusToV2 to export characters in the industry-standard V2 format ---
+/**
+ * Converts an AI Nexus Character into a Character Card v2 compatible object.
+ */
+export const nexusToV2 = async (character: Character): Promise<any> => {
+    return {
+        spec: "chara_card_v2",
+        spec_version: "2.0",
+        data: {
+            name: character.name,
+            description: character.description,
+            personality: character.personalityTraits || '',
+            scenario: '',
+            first_mes: character.firstMessage || '',
+            mes_example: '',
+            char_persona: character.personality || '',
+            system_prompt: '',
+            post_history_instructions: '',
+            alternate_greetings: [],
+            tags: character.tags || [],
+            creator: 'AI Nexus',
+            character_version: '1.0',
+            extensions: {},
+            // Include full original object for lossless internal transfer
+            _aiNexusData: character
+        }
+    };
+};
+
+export const jsonToNexusChat = (data: any): ChatSession | null => {
+    if (data && data.messages && Array.isArray(data.messages)) {
+        return data as ChatSession;
+    }
+    return null;
 };

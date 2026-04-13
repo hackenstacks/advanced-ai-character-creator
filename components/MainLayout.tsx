@@ -282,7 +282,7 @@ export const MainLayout: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImport = async (event: React.ChangeEvent<HTMLInputElement>, forceType?: 'character' | 'lorebook' | 'chat' | 'document') => {
         const file = event.target.files?.[0];
         if (!file) return;
 
@@ -290,8 +290,8 @@ export const MainLayout: React.FC = () => {
             try {
                 let imported = JSON.parse(jsonString);
                 
-                // 1. Check if it's a full backup
-                if (imported.characters && imported.chatSessions) {
+                // Backup check (Only if not forcing a specific type)
+                if (!forceType && imported.characters && imported.chatSessions) {
                     setConfirmationRequest({
                         message: "Importing a full backup will overwrite ALL your current data. Are you sure?",
                         onConfirm: async () => {
@@ -305,61 +305,75 @@ export const MainLayout: React.FC = () => {
                     return;
                 }
 
-                // 2. Check for Lorebook
-                const lorebook = compatibilityService.sillyTavernWorldInfoToNexus(imported, file.name);
-                if (lorebook) {
-                    const newLorebook = { ...lorebook, id: crypto.randomUUID() } as Lorebook;
-                    setAppData(prev => {
-                        const updated = { ...prev, lorebooks: [...(prev.lorebooks || []), newLorebook] };
-                        persistData(updated);
-                        return updated;
-                    });
-                    alert(`Lorebook "${newLorebook.name}" imported.`);
-                    return;
+                // LOREBOOK IMPORT (FORCED OR DETECTED)
+                if (forceType === 'lorebook' || (!forceType && compatibilityService.sillyTavernWorldInfoToNexus(imported, file.name))) {
+                    const loreResult = compatibilityService.sillyTavernWorldInfoToNexus(imported, file.name);
+                    if (loreResult) {
+                        const newLorebook = { ...loreResult, id: crypto.randomUUID() } as Lorebook;
+                        setAppData(prev => {
+                            const updated = { ...prev, lorebooks: [...(prev.lorebooks || []), newLorebook] };
+                            persistData(updated);
+                            return updated;
+                        });
+                        alert(`Lorebook "${newLorebook.name}" imported.`);
+                        return;
+                    }
                 }
 
-                // 3. Check for Character Card
-                const charResult = compatibilityService.v2ToNexus(imported);
-                if (charResult) {
-                    const { character, lorebook: charLore } = charResult;
-                    setAppData(prev => {
-                        const updated = { 
-                            ...prev, 
-                            characters: [...prev.characters, character],
-                            lorebooks: charLore ? [...(prev.lorebooks || []), charLore] : prev.lorebooks
-                        };
-                        persistData(updated);
-                        return updated;
-                    });
-                    alert(`Character "${character.name}" imported.`);
-                    return;
+                // CHARACTER IMPORT (FORCED OR DETECTED)
+                if (forceType === 'character' || (!forceType && compatibilityService.v2ToNexus(imported))) {
+                    const charResult = compatibilityService.v2ToNexus(imported);
+                    if (charResult) {
+                        const { character, lorebook: charLore } = charResult;
+                        setAppData(prev => {
+                            const updated = { 
+                                ...prev, 
+                                characters: [...prev.characters, character],
+                                lorebooks: charLore ? [...(prev.lorebooks || []), charLore] : (prev.lorebooks || [])
+                            };
+                            persistData(updated);
+                            return updated;
+                        });
+                        alert(`Character "${character.name}" imported.`);
+                        return;
+                    }
                 }
 
-                alert("Unknown file format. Please ensure it's a valid character card or backup JSON.");
+                // CHAT IMPORT (FORCED OR DETECTED)
+                if (forceType === 'chat' || (!forceType && compatibilityService.jsonToNexusChat(imported))) {
+                    const chatResult = compatibilityService.jsonToNexusChat(imported);
+                    if (chatResult) {
+                        setAppData(prev => {
+                            const updated = { ...prev, chatSessions: [...prev.chatSessions, chatResult] };
+                            persistData(updated);
+                            return updated;
+                        });
+                        alert(`Chat session "${chatResult.name}" imported.`);
+                        return;
+                    }
+                }
+
+                alert("Unknown file format. If this is a Lorebook, try importing it from the Lorebooks panel.");
             } catch (err) {
-                logger.error("Import failed during JSON processing", err);
+                logger.error("Import failed", err);
                 alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
             }
         };
 
-        // If it's a PNG, it might be a character card
         if (file.type === 'image/png') {
-            const charData = await compatibilityService.extractCharaFromPng(file);
-            if (charData) {
-                processJsonData(charData);
+            const extractedJson = await compatibilityService.extractCharaFromPng(file);
+            if (extractedJson) {
+                processJsonData(extractedJson);
             } else {
-                alert("This PNG does not contain character metadata. To add avatars, please use the 'Knowledge Library' or Character Edit form.");
+                alert("This PNG does not contain character or lore metadata.");
             }
-            if (fileInputRef.current) fileInputRef.current.value = "";
             return;
         }
 
-        // Otherwise assume it's a JSON text file
         const reader = new FileReader();
         reader.onload = async (e) => {
             const text = e.target?.result as string;
             processJsonData(text);
-            if (fileInputRef.current) fileInputRef.current.value = "";
         };
         reader.readAsText(file);
     };
@@ -417,14 +431,13 @@ export const MainLayout: React.FC = () => {
                     <button onClick={() => { handlePanelToggle('library'); setActiveView('library'); }} title="Library" className={`p-2 rounded-lg ${activePanel === 'library' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><FolderIcon className="w-6 h-6"/></button>
                     <button onClick={() => { setActiveView('plugins'); setActivePanel('none'); }} title="Plugins" className={`p-2 rounded-lg ${activeView === 'plugins' ? 'bg-primary-600 text-text-accent' : 'text-text-secondary hover:bg-background-tertiary'}`}><CodeIcon className="w-6 h-6"/></button>
                     <div className="w-8 border-t border-border-neutral my-2"></div>
-                    <button onClick={() => setIsChatModalVisible(true)} className="p-2 rounded-lg text-primary-500 hover:bg-background-tertiary" title="Create New Chat"><PlusIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsAppearanceModalVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><PaletteIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsLogViewerVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><TerminalIcon className="w-6 h-6"/></button>
                     <button onClick={() => setIsHelpVisible(true)} className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><HelpIcon className="w-6 h-6"/></button>
                 </div>
                 <div className="flex flex-col items-center space-y-2">
-                    <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" />
-                    <button onClick={() => fileInputRef.current?.click()} title="Import File" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><UploadIcon className="w-6 h-6"/></button>
+                    <input type="file" ref={fileInputRef} onChange={(e) => handleImport(e)} className="hidden" />
+                    <button onClick={() => fileInputRef.current?.click()} title="Smart Import" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><UploadIcon className="w-6 h-6"/></button>
                     <button onClick={handleExportBackup} title="Export Full Backup" className="p-2 rounded-lg text-text-secondary hover:bg-background-tertiary"><DownloadIcon className="w-6 h-6"/></button>
                     <ThemeSwitcher />
                 </div>
@@ -436,16 +449,16 @@ export const MainLayout: React.FC = () => {
                         <button onClick={() => setIsChatModalVisible(true)} className="w-full flex items-center justify-center space-x-2 mb-4 py-2 px-4 rounded-lg bg-primary-600 text-text-accent font-bold hover:bg-primary-500 shadow-md transition-all">
                             <PlusIcon className="w-5 h-5" /> <span>Start New Chat</span>
                         </button>
-                        <ChatList chatSessions={appData.chatSessions.filter(c => !!c.isArchived === showArchivedChats)} characters={appData.characters} selectedChatId={selectedChatId} onSelectChat={(id) => { setSelectedChatId(id); setActiveView('chat'); }} onDeleteChat={handleArchiveChat} onExportChat={handleExportChat} showArchived={showArchivedChats} onToggleArchiveView={() => setShowArchivedChats(!showArchivedChats)} onRestoreChat={(id) => handleSessionUpdate({ ...appData.chatSessions.find(s => s.id === id)!, isArchived: false })} onPermanentlyDeleteChat={(id) => setAppData(prev => ({ ...prev, chatSessions: prev.chatSessions.filter(s => s.id !== id) }))}/>
+                        <ChatList chatSessions={appData.chatSessions.filter(c => !!c.isArchived === showArchivedChats)} characters={appData.characters} selectedChatId={selectedChatId} onSelectChat={(id) => { setSelectedChatId(id); setActiveView('chat'); }} onDeleteChat={handleArchiveChat} onExportChat={handleExportChat} showArchived={showArchivedChats} onToggleArchiveView={() => setShowArchivedChats(!showArchivedChats)} onRestoreChat={(id) => handleSessionUpdate({ ...appData.chatSessions.find(s => s.id === id)!, isArchived: false })} onPermanentlyDeleteChat={(id) => setAppData(prev => ({ ...prev, chatSessions: prev.chatSessions.filter(s => s.id !== id) }))} onImportChat={(e) => handleImport(e, 'chat')}/>
                     </div>
                 )}
-                {activePanel === 'characters' && <CharacterList characters={appData.characters.filter(c => !!c.isArchived === showArchivedCharacters)} onDeleteCharacter={handleArchiveCharacter} onEditCharacter={(c) => { setEditingCharacter(c); setActiveView('character-form'); }} onAddNew={() => { setEditingCharacter(null); setActiveView('character-form'); }} onExportCharacter={handleExportCharacter} showArchived={showArchivedCharacters} onToggleArchiveView={() => setShowArchivedCharacters(!showArchivedCharacters)} onRestoreCharacter={(id) => handleCharacterUpdate({ ...appData.characters.find(c => c.id === id)!, isArchived: false })} onPermanentlyDeleteCharacter={(id) => setAppData(prev => ({ ...prev, characters: prev.characters.filter(c => c.id !== id) }))}/>}
-                {activePanel === 'lorebooks' && <LorebookManager lorebooks={appData.lorebooks || []} onLorebooksUpdate={(lb) => setAppData(prev => ({ ...prev, lorebooks: lb }))} onSetConfirmation={setConfirmationRequest}/>}
+                {activePanel === 'characters' && <CharacterList characters={appData.characters.filter(c => !!c.isArchived === showArchivedCharacters)} onDeleteCharacter={handleArchiveCharacter} onEditCharacter={(c) => { setEditingCharacter(c); setActiveView('character-form'); }} onAddNew={() => { setEditingCharacter(null); setActiveView('character-form'); }} onExportCharacter={handleExportCharacter} showArchived={showArchivedCharacters} onToggleArchiveView={() => setShowArchivedCharacters(!showArchivedCharacters)} onRestoreCharacter={(id) => handleCharacterUpdate({ ...appData.characters.find(c => c.id === id)!, isArchived: false })} onPermanentlyDeleteCharacter={(id) => setAppData(prev => ({ ...prev, characters: prev.characters.filter(c => c.id !== id) }))} onImportCharacter={(e) => handleImport(e, 'character')}/>}
+                {activePanel === 'lorebooks' && <LorebookManager lorebooks={appData.lorebooks || []} onLorebooksUpdate={(lb) => setAppData(prev => ({ ...prev, lorebooks: lb }))} onSetConfirmation={setConfirmationRequest} onImportLorebook={(e) => handleImport(e, 'lorebook')}/>}
             </aside>
             
             <main className="relative flex-1 flex flex-col h-full overflow-hidden">
                 {activeView === 'chat' && (
-                    selectedChat ? <ChatInterface session={selectedChat} allCharacters={appData.characters} allChatSessions={appData.chatSessions} allLorebooks={appData.lorebooks || []} userKeys={appData.userKeys} fileSystem={fileSystemState} onUpdateFileSystem={updateFileSystem} onSessionUpdate={handleSessionUpdate} onTriggerHook={triggerPluginHook} onCharacterUpdate={handleCharacterUpdate} onMemoryImport={() => {}} onSaveBackup={handleExportBackup} handlePluginApiRequest={handlePluginApiRequest}/>
+                    selectedChat ? <ChatInterface session={selectedChat} allCharacters={appData.characters} allChatSessions={appData.chatSessions} allLorebooks={appData.lorebooks || []} userKeys={appData.userKeys} fileSystem={fileSystemState} onUpdateFileSystem={updateFileSystem} onSessionUpdate={handleSessionUpdate} onTriggerHook={triggerPluginHook} onCharacterUpdate={handleCharacterUpdate} onMemoryImport={() => {}} onSaveBackup={handleExportBackup} handlePluginApiRequest={handlePluginApiRequest} onImportChatHistory={(e) => handleImport(e, 'chat')}/>
                     : <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
                         <ChatBubbleIcon className="w-20 h-20 text-text-secondary opacity-20" />
                         <h3 className="text-2xl font-bold text-text-primary">No Chat Selected</h3>

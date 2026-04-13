@@ -3,21 +3,14 @@ import { EmbeddingConfig } from "../types.ts";
 import { logger } from "./loggingService.ts";
 
 // --- Gemini Client Setup ---
-const API_KEY = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-let defaultAi: GoogleGenAI | null = null;
-
-if (API_KEY) {
-  defaultAi = new GoogleGenAI({ apiKey: API_KEY });
-}
+// FIX: Initialize Gemini client strictly using process.env.API_KEY directly.
+const defaultAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getAiClient = (apiKey?: string): GoogleGenAI => {
     if (apiKey) {
         return new GoogleGenAI({ apiKey });
     }
-    if (defaultAi) {
-        return defaultAi;
-    }
-    throw new Error("Gemini API key not configured.");
+    return defaultAi;
 }
 
 const withRetry = async <T>(

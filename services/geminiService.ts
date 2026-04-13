@@ -6,25 +6,15 @@ import { logger } from "./loggingService.ts";
 const lastRequestTimestamps = new Map<string, number>();
 
 // --- Gemini Client Setup ---
-const API_KEY = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-let defaultAi: GoogleGenAI | null = null;
-
-if (API_KEY) {
-  defaultAi = new GoogleGenAI({ apiKey: API_KEY });
-} else {
-  const errorMsg = "API_KEY environment variable not set. The application will not be able to connect to the Gemini API by default.";
-  logger.warn(errorMsg);
-}
+// FIX: Initialize Gemini client strictly using the provided API key from the environment.
+const defaultAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getAiClient = (apiKey?: string): GoogleGenAI => {
     if (apiKey) {
         logger.debug("Creating a new Gemini client with a custom API key.");
         return new GoogleGenAI({ apiKey });
     }
-    if (defaultAi) {
-        return defaultAi;
-    }
-    throw new Error("Default Gemini API key not configured. Please set a custom API key for the character or plugin.");
+    return defaultAi;
 }
 
 // --- Helper: Blob to Base64 ---
@@ -695,6 +685,7 @@ const streamGeminiChatResponse = async (
                 onChunk({ type: 'tool_call', data: chunk.functionCalls[0] });
                 return; 
             }
+            // FIX: Accessing .text as a property directly as per guidelines
             if (chunk.text) {
                 onChunk(chunk.text);
             }
@@ -825,6 +816,7 @@ export const generateContent = async (prompt: string, apiKey?: string): Promise<
         model: 'gemini-3-flash-preview',
         contents: prompt,
     }));
+    // FIX: Using response.text directly (property, not a method)
     return response.text || "";
   } catch (error) {
     logger.error("Error in generateContent:", error);
@@ -847,6 +839,7 @@ export const streamGenericResponse = async (
         })) as AsyncIterable<GenerateContentResponse>;
 
         for await (const chunk of responseStream) {
+            // FIX: Using chunk.text directly (property, not a method)
             if (chunk.text) {
                 onChunk(chunk.text);
             }

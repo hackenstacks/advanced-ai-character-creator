@@ -5,11 +5,13 @@ import { PlusIcon } from './icons/PlusIcon.tsx';
 import { TrashIcon } from './icons/TrashIcon.tsx';
 import { EditIcon } from './icons/EditIcon.tsx';
 import { DownloadIcon } from './icons/DownloadIcon.tsx';
+import { UploadIcon } from './icons/UploadIcon.tsx';
 
 interface LorebookManagerProps {
   lorebooks: Lorebook[];
   onLorebooksUpdate: (lorebooks: Lorebook[]) => void;
   onSetConfirmation: (request: ConfirmationRequest | null) => void;
+  onImportLorebook: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const LorebookEditor: React.FC<{
@@ -100,8 +102,9 @@ const LorebookEditor: React.FC<{
 };
 
 
-export const LorebookManager: React.FC<LorebookManagerProps> = ({ lorebooks, onLorebooksUpdate, onSetConfirmation }) => {
+export const LorebookManager: React.FC<LorebookManagerProps> = ({ lorebooks, onLorebooksUpdate, onSetConfirmation, onImportLorebook }) => {
   const [editingLorebook, setEditingLorebook] = useState<Lorebook | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = (lorebookToSave: Lorebook) => {
     const isNew = !lorebooks.some(lb => lb.id === lorebookToSave.id);
@@ -158,9 +161,15 @@ export const LorebookManager: React.FC<LorebookManagerProps> = ({ lorebooks, onL
     <div className="flex-1 flex flex-col min-h-0 h-full">
         <header className="p-4 border-b border-border-neutral flex justify-between items-center flex-shrink-0">
             <h2 className="text-xl font-bold text-text-primary">Lorebooks</h2>
-            <button onClick={handleCreate} className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors" title="New Lorebook">
-                <PlusIcon className="w-5 h-5" />
-            </button>
+            <div className="flex items-center space-x-1">
+                <input type="file" ref={fileInputRef} onChange={onImportLorebook} className="hidden" />
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors" title="Import Lorebook JSON">
+                    <UploadIcon className="w-5 h-5" />
+                </button>
+                <button onClick={handleCreate} className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors" title="New Lorebook">
+                    <PlusIcon className="w-5 h-5" />
+                </button>
+            </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {lorebooks.length === 0 ? (

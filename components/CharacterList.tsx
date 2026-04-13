@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Character } from '../types.ts';
 import { PlusIcon } from './icons/PlusIcon.tsx';
 import { TrashIcon } from './icons/TrashIcon.tsx';
@@ -8,6 +8,7 @@ import { ArchiveBoxIcon } from './icons/ArchiveBoxIcon.tsx';
 import { RestoreIcon } from './icons/RestoreIcon.tsx';
 import { UserIcon } from './icons/UserIcon.tsx';
 import { BookOpenIcon } from './icons/BookOpenIcon.tsx';
+import { UploadIcon } from './icons/UploadIcon.tsx';
 
 interface CharacterListProps {
   characters: Character[];
@@ -19,6 +20,7 @@ interface CharacterListProps {
   onToggleArchiveView: () => void;
   onRestoreCharacter: (id: string) => void;
   onPermanentlyDeleteCharacter: (id: string) => void;
+  onImportCharacter: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const CharacterList: React.FC<CharacterListProps> = ({
@@ -30,19 +32,32 @@ export const CharacterList: React.FC<CharacterListProps> = ({
   showArchived,
   onToggleArchiveView,
   onRestoreCharacter,
-  onPermanentlyDeleteCharacter
+  onPermanentlyDeleteCharacter,
+  onImportCharacter
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
        <div className="flex justify-between items-center mb-2 border-t border-border-neutral pt-4">
         <h2 className="text-lg font-semibold text-text-primary">{showArchived ? 'Archived Characters' : 'Characters'}</h2>
-        <button
-          onClick={onAddNew}
-          className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors"
-          title="Add New Character"
-        >
-          <PlusIcon className="w-5 h-5" />
-        </button>
+        <div className="flex items-center space-x-1">
+            <input type="file" ref={fileInputRef} onChange={onImportCharacter} className="hidden" />
+            <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors"
+                title="Import Character Card"
+            >
+                <UploadIcon className="w-5 h-5" />
+            </button>
+            <button
+                onClick={onAddNew}
+                className="p-2 rounded-md text-text-secondary hover:bg-background-tertiary hover:text-text-primary transition-colors"
+                title="Add New Character"
+            >
+                <PlusIcon className="w-5 h-5" />
+            </button>
+        </div>
       </div>
        <button 
         onClick={onToggleArchiveView}
